@@ -16,19 +16,23 @@ const coreHome = path.join(scratch, "core-home");
 let macAppBundle;
 
 function run(command, args, options = {}) {
+  const inheritStdio = options.stdio === "inherit";
   const result = spawnSync(command, args, {
     cwd: options.cwd || scratch,
     env: options.env || process.env,
-    encoding: "utf8",
-    maxBuffer: 8 * 1024 * 1024,
+    ...(inheritStdio ? { stdio: "inherit" } : {
+      encoding: "utf8",
+      maxBuffer: 8 * 1024 * 1024,
+    }),
     timeout: options.timeout || 45_000,
     windowsHide: true,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
-    throw new Error(
-      `${command} failed with status ${result.status}: ${result.stderr?.trim() || result.stdout?.trim() || "no output"}`,
-    );
+    const detail = inheritStdio
+      ? "see inherited output above"
+      : result.stderr?.trim() || result.stdout?.trim() || "no output";
+    throw new Error(`${command} failed with status ${result.status}: ${detail}`);
   }
 }
 
@@ -77,6 +81,7 @@ try {
   let executable;
   let command;
   let args;
+  let launchStdio;
   const env = smokeEnvironment();
 
   if (process.platform === "darwin") {
@@ -98,6 +103,7 @@ try {
     command = "xvfb-run";
     args = ["-a", runner, executable, "--launcher-smoke-test"];
     env.APPIMAGE_EXTRACT_AND_RUN = "1";
+    launchStdio = "inherit";
   } else if (process.platform === "win32") {
     const installer = artifact(/-win-x64\.exe$/, "Windows installer");
     run(installer, ["/S", "/currentuser"], { timeout: 120_000 });
@@ -109,7 +115,7 @@ try {
   }
 
   if (!fs.existsSync(executable)) throw new Error(`Packaged launcher executable is missing: ${executable}`);
-  run(command, args, { env });
+  run(command, args, { env, stdio: launchStdio });
   if (!fs.existsSync(markerPath)) throw new Error("Packaged launcher did not write its readiness marker");
   const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
   if (marker.ok !== true
