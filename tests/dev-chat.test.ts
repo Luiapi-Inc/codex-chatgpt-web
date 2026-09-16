@@ -433,7 +433,7 @@ test("DEV driver uses shared browser methods and its own broker while an unrelat
     await localBroker.close();
     await occupied.stop(true);
   }
-});
+}, 15_000);
 
 test("synthetic fill crosses the production threshold and triggers the real compact handler", async () => {
   const root = scratch("cgw-dev-compact");

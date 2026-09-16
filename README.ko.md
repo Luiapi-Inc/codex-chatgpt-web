@@ -119,6 +119,22 @@ inbound 포트를 열거나 라우터 포트 포워딩을 설정할 필요가 �
 삭제할 수도 있습니다. 모든 브라우저 checkpoint에서 스크린샷이 필요한 경우에만
 `CODEX_CHATGPT_WEB_BROWSER_DIAGNOSTICS=1`을 설정하세요.
 
+### 선택적 Honcho 메모리
+
+bridge를 시작하기 전에 `HONCHO_API_KEY`를 설정하면 영구 작업 메모리를 사용할 수 있습니다.
+자동 시작 launcher는 권한이 `0600`인 `~/.codex-chatgpt-web/secrets/honcho-api.key`에서도
+키를 읽을 수 있으며, `HONCHO_API_KEY_FILE`로 경로를 변경할 수 있습니다.
+
+```bash
+export HONCHO_API_KEY="..."
+export HONCHO_WORKSPACE_ID="codex-chatgpt-web"
+export HONCHO_CONTEXT_TOKENS=2000
+export HONCHO_TIMEOUT_MS=8000
+```
+
+자체 호스팅 또는 다중 사용자 배포에는 `HONCHO_URL`, `HONCHO_ENVIRONMENT`,
+`HONCHO_USER_PEER_ID`, `HONCHO_ASSISTANT_PEER_ID`도 사용할 수 있습니다.
+
 새 설치에서는 cross-backend subagent에 **Compatibility V1**을 사용합니다. **Native**는 Codex
 자체 기능 설정을 유지하면서 plaintext Web-to-Web V2 delegation을 활성화합니다. 프로토콜을
 변경한 뒤에는 Codex를 다시 시작하고 새 작업을 시작하세요.

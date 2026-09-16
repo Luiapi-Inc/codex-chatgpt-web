@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 import type { AppConfig } from "./config";
 import { getConfigPath, loadConfig, saveConfig } from "./config";
@@ -48,6 +48,37 @@ import {
   verifyManagedJournalState,
   verifyRestoredRoute,
 } from "./codex-integration-route";
+
+const CODEX_CONFIG_LOCK_TIMEOUT_MS = 15_000;
+const CODEX_CONFIG_LOCK_STALE_MS = 60_000;
+
+function withCodexConfigLock<T>(operation: () => T): T {
+  const lockPath = `${getCodexConfigPath()}.codex-chatgpt-web.lock`;
+  const started = Date.now();
+  let descriptor: number | undefined;
+  while (descriptor === undefined) {
+    try {
+      descriptor = openSync(lockPath, "wx");
+      break;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      try {
+        const lock = statSync(lockPath);
+        if (Date.now() - lock.mtimeMs > CODEX_CONFIG_LOCK_STALE_MS) unlinkSync(lockPath);
+      } catch {}
+      if (Date.now() - started >= CODEX_CONFIG_LOCK_TIMEOUT_MS) {
+        throw new Error(`Codex config is being modified by another agent: ${lockPath}`);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50);
+    }
+  }
+  try {
+    return operation();
+  } finally {
+    closeSync(descriptor);
+    unlinkSync(lockPath);
+  }
+}
 
 function installConfiguredRoute(
   baseline: string,
@@ -226,7 +257,7 @@ export function preflightCodexIntegration(
     options.replaceExistingRoute === true,
   );
 }
-export function installCodexIntegration(
+function installCodexIntegrationUnlocked(
   config: AppConfig,
   options: InstallCodexIntegrationOptions = {},
 ): CodexIntegrationJournal {
@@ -341,7 +372,13 @@ export function installCodexIntegration(
   return journal;
 }
 
-export function deactivateCodexIntegration(): SetCodexIntegrationActiveResult {
+export function installCodexIntegration(
+  ...args: Parameters<typeof installCodexIntegrationUnlocked>
+): ReturnType<typeof installCodexIntegrationUnlocked> {
+  return withCodexConfigLock(() => installCodexIntegrationUnlocked(...args));
+}
+
+function deactivateCodexIntegrationUnlocked(): SetCodexIntegrationActiveResult {
   const existing = readJournal();
   if (!existing) return { changed: false, active: false };
   if (existing.version === 2) {
@@ -370,7 +407,11 @@ export function deactivateCodexIntegration(): SetCodexIntegrationActiveResult {
   return { changed: true, active: false };
 }
 
-export function activateCodexIntegration(): SetCodexIntegrationActiveResult {
+export function deactivateCodexIntegration(): SetCodexIntegrationActiveResult {
+  return withCodexConfigLock(() => deactivateCodexIntegrationUnlocked());
+}
+
+function activateCodexIntegrationUnlocked(): SetCodexIntegrationActiveResult {
   const existing = readJournal();
   if (!existing) throw new Error("Codex integration is not installed");
   if (existing.version === 2) {
@@ -437,7 +478,11 @@ export function activateCodexIntegration(): SetCodexIntegrationActiveResult {
   return { changed: true, active: true };
 }
 
-export function uninstallCodexIntegration(): UninstallCodexIntegrationResult {
+export function activateCodexIntegration(): SetCodexIntegrationActiveResult {
+  return withCodexConfigLock(() => activateCodexIntegrationUnlocked());
+}
+
+function uninstallCodexIntegrationUnlocked(): UninstallCodexIntegrationResult {
   const journal = readJournal();
   if (!journal) return { changed: false };
   if (!existsSync(journal.configPath)) throw new Error(`Codex config is missing: ${journal.configPath}`);
@@ -481,6 +526,10 @@ export function uninstallCodexIntegration(): UninstallCodexIntegrationResult {
       : primary);
   }
   return { changed: true };
+}
+
+export function uninstallCodexIntegration(): UninstallCodexIntegrationResult {
+  return withCodexConfigLock(() => uninstallCodexIntegrationUnlocked());
 }
 
 export function inspectCodexIntegration(): {

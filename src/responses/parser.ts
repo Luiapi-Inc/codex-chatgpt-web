@@ -62,6 +62,26 @@ function containsOpaqueEncryptedContent(value: unknown): boolean {
     && block.encrypted_content.length > 0);
 }
 
+function plainInputText(content: string | CodexContentPart[]): string | undefined {
+  if (typeof content === "string") return content;
+  if (content.some(part => part.type !== "text")) return undefined;
+  return content.map(part => part.type === "text" ? part.text : "").join("\n");
+}
+
+/** Classify only exact Codex-generated carrier shapes; ordinary user text remains authoritative. */
+function codexUserContextKind(content: string | CodexContentPart[]): "skill" | "operational" | undefined {
+  const text = plainInputText(content)?.trim();
+  if (!text) return undefined;
+  if (/^<skill>[\s\S]*<\/skill>$/.test(text)) return "skill";
+  if (/^<environment_context>[\s\S]*<\/environment_context>$/.test(text)
+    || /^<recommended_plugins>[\s\S]*<\/recommended_plugins>(?:[\s\S]*<environment_context>[\s\S]*<\/environment_context>)?$/.test(text)
+    || /^# AGENTS\.md instructions for [^\n]+[\s\S]*<environment_context>[\s\S]*<\/environment_context>$/.test(text)
+    || /^<subagent_notification>[\s\S]*<\/subagent_notification>$/.test(text)) {
+    return "operational";
+  }
+  return undefined;
+}
+
 type OutputBlock = { type: "output_text"; text: string } | { type: "text"; text: string } | { type: "refusal"; refusal: string };
 
 function outputTextOf(blocks: unknown[] | string | undefined): CodexTextContent[] {
@@ -352,6 +372,7 @@ export function parseRequest(body: unknown): CodexParsedRequest {
 
       if (effectiveType === "agent_message") {
         const agentMessage = item as {
+          id?: string;
           author?: string;
           recipient?: string;
           content?: unknown;
@@ -374,6 +395,7 @@ export function parseRequest(body: unknown): CodexParsedRequest {
           ...(typeof agentMessage.recipient === "string" ? { recipient: agentMessage.recipient } : {}),
           content,
           timestamp: now,
+          ...(typeof agentMessage.id === "string" && agentMessage.id ? { messageId: agentMessage.id } : {}),
         };
         messages.push(message);
 
@@ -381,7 +403,7 @@ export function parseRequest(body: unknown): CodexParsedRequest {
       }
 
       if (effectiveType === "message") {
-        const msg = item as { role?: string; content?: unknown; phase?: "commentary" | "final_answer" };
+        const msg = item as { id?: string; role?: string; content?: unknown; phase?: "commentary" | "final_answer" };
         switch (msg.role) {
           case "system": {
             pendingReasoning.length = 0;
@@ -394,7 +416,20 @@ export function parseRequest(body: unknown): CodexParsedRequest {
           case "developer": {
             pendingReasoning.length = 0;
             const content = inputContentParts(msg.content as unknown[] | string | undefined);
-            messages.push({ role: msg.role, content, timestamp: now });
+            const messageId = typeof msg.id === "string" && msg.id ? msg.id : undefined;
+            if (msg.role === "user") {
+              const contextKind = codexUserContextKind(content);
+              messages.push({
+                role: "user",
+                content,
+                timestamp: now,
+                ...(messageId ? { messageId } : {}),
+                provenance: contextKind ? "codex_context" : "human",
+                ...(contextKind ? { contextKind } : {}),
+              });
+            } else {
+              messages.push({ role: "developer", content, timestamp: now, ...(messageId ? { messageId } : {}) });
+            }
             break;
           }
           case "assistant": {
@@ -407,6 +442,7 @@ export function parseRequest(body: unknown): CodexParsedRequest {
               ...(msg.phase ? { phase: msg.phase } : {}),
               model: data.model,
               timestamp: now,
+              ...(typeof msg.id === "string" && msg.id ? { messageId: msg.id } : {}),
             });
             pendingReasoning.length = 0;
             break;

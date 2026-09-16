@@ -4579,18 +4579,21 @@ export class ChatGptBrowserWorker {
           ),
         );
       }
-      // A retained lease proves the connector binding, not the current model selection.
-      // Reconcile the live control before every submission, including retained continuations.
-      let mode = await this.runStage(turn.traceId, "effort_selection", browserStageTimeouts.effortSelection, () => (
-        this.selectModelAndEffort(
-          page,
-          turn.modelId,
-          stagingMode.effort,
-          browserCapabilities,
-          checkpoint => diagnostics.capture(page, checkpoint),
-        )
-      ));
-      await diagnostics.capture(page, "effort-selection-complete");
+      // The first turn owns model/effort selection. Retained conversations already have the
+      // ChatGPT browser session state selected by the user, so touching the selector again would
+      // reopen the effort menu and overwrite the continuation state.
+      let mode = reuseConversation
+        ? requestedMode
+        : await this.runStage(turn.traceId, "effort_selection", browserStageTimeouts.effortSelection, () => (
+          this.selectModelAndEffort(
+            page,
+            turn.modelId,
+            stagingMode.effort,
+            browserCapabilities,
+            checkpoint => diagnostics.capture(page, checkpoint),
+          )
+        ));
+      if (!reuseConversation) await diagnostics.capture(page, "effort-selection-complete");
 
       let finalPrompt = prepared.text;
       if (prepared.multipart && multipartStages && multipartTransactionId && multipartFinalPrompt) {
@@ -4677,7 +4680,10 @@ export class ChatGptBrowserWorker {
           await diagnostics.capture(page, `multipart-stage-${index + 1}-acknowledged`);
           await turn.onMultipartStageAcknowledged?.(index + 1);
         }
-        if (mode.effort !== requestedMode.effort) {
+        // Multipart staging is still part of the first Codex turn. A retained continuation must
+        // keep the effort already selected on the existing ChatGPT conversation, even when its
+        // prompt happens to use the multipart transport.
+        if (!reuseConversation && mode.effort !== requestedMode.effort) {
           mode = await this.runStage(
             turn.traceId,
             "final_part_effort_selection",

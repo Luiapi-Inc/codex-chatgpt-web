@@ -53,6 +53,7 @@
     "verify": "bun run scripts/verify.ts"
   },
   "dependencies": {
+    "@honcho-ai/sdk": "2.4.0",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",

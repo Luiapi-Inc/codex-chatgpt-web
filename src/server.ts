@@ -11,11 +11,15 @@ import {
 import { ChatGptWebAdapterError, chatGptBrowserTabClosedError } from "./adapters/chatgpt-web/adapter-error";
 import {
   CHATGPT_TURN_REVISION_CONFLICT_MESSAGE,
+  currentChatGptTurnEnvironmentItems,
+  currentChatGptTurnUserItem,
   extractChatGptTurnIdentity,
   extractCodexTurnIdentityFromBody,
   extractChatGptCompactionSourceRevision,
 } from "./adapters/chatgpt-web/environment";
 import { rememberCompactionContinuation } from "./adapters/chatgpt-web/compaction-continuation";
+import { estimateChatGptWebInputTokens, resolveBiggerContextMultipartParts } from "./adapters/chatgpt-web/usage";
+import type { ChatGptWebCapabilities } from "./adapters/chatgpt-web/model";
 import { bridgeToResponsesSSE, buildResponseJSON, formatErrorResponse } from "./bridge";
 import type { AppConfig } from "./config";
 import { providerConfig } from "./config";
@@ -31,8 +35,10 @@ import {
 } from "./codex-integration";
 import {
   CHATGPT_WEB_LUNA_BACKEND_MODEL,
+  isChatGptWebZeroRiskBackendModel,
   isChatGptWebModelSlug,
   requireChatGptWebModelRoute,
+  resolveChatGptWebContextLimits,
   type ChatGptWebModelRoute,
 } from "./chatgpt-web-models";
 import { forwardNativeCodexRequest, type NativeFetch, type NativeImageEndpoint } from "./native-passthrough";
@@ -372,6 +378,179 @@ export function routeChatGptWebRequest(parsed: CodexParsedRequest, config: AppCo
   return route;
 }
 
+function automaticCompactionCapabilities(config: AppConfig): ChatGptWebCapabilities {
+  const provider = providerConfig(config);
+  return {
+    localToolsEnabled: provider.chatgptWeb?.localToolsEnabled === true,
+    solAvailable: provider.chatgptWeb?.solAvailable !== false,
+    extraHighAvailable: provider.chatgptWeb?.extraHighAvailable === true,
+    proAvailable: provider.chatgptWeb?.proAvailable === true,
+  };
+}
+
+/** Estimate the exact prompt shape that the browser worker will compile for this turn. */
+function automaticCompactionEstimate(
+  parsed: CodexParsedRequest,
+  route: ChatGptWebModelRoute,
+  config: AppConfig,
+): { inputTokens: number; threshold: number } | undefined {
+  if (parsed._compactionRequest || route.interactionMode !== "automatic") return undefined;
+  if (route.backendModel === CHATGPT_WEB_LUNA_BACKEND_MODEL
+    || isChatGptWebZeroRiskBackendModel(route.backendModel)) return undefined;
+
+  const capabilities = automaticCompactionCapabilities(config);
+  const multipart = config.experimentalBiggerContext
+    ? resolveBiggerContextMultipartParts(parsed, capabilities)
+    : undefined;
+  const inputTokens = estimateChatGptWebInputTokens(parsed, capabilities, {
+    experimentalMultipartParts: multipart,
+  });
+  // Honcho memory is fetched asynchronously by the adapter immediately before prompt
+  // compilation. Reserve its configured bounded budget here so automatic compaction does not
+  // under-count the prompt that will actually reach the browser.
+  const honcho = providerConfig(config).chatgptWeb?.honcho;
+  const honchoContextTokens = honcho?.enabled && honcho.apiKey
+    ? (honcho.contextTokens ?? 2_000)
+    : 0;
+  const limits = resolveChatGptWebContextLimits(
+    route.backendModel,
+    route.adapterEffort,
+    {
+      ...capabilities,
+      experimentalBiggerContext: config.experimentalBiggerContext,
+    },
+  );
+  return { inputTokens: inputTokens + honchoContextTokens, threshold: limits.autoCompactTokenLimit };
+}
+
+function rawResponsesInput(value: unknown): unknown[] | undefined {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    return [{ type: "message", role: "user", content: [{ type: "input_text", text: value }] }];
+  }
+  return undefined;
+}
+
+function rawInputRecord(value: unknown): Record<string, unknown> | undefined {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function rawInputIsEnvironment(value: unknown): boolean {
+  const item = rawInputRecord(value);
+  if (item?.type !== "message" || item.role !== "user") return false;
+  const content = item.content;
+  const text = typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content.map(part => rawInputRecord(part)?.text).filter((part): part is string => typeof part === "string").join("\n")
+      : "";
+  return /<\/?environment_context\b/i.test(text);
+}
+
+function rawInputId(value: unknown): string | undefined {
+  const id = rawInputRecord(value)?.id;
+  return typeof id === "string" && id.length > 0 ? id : undefined;
+}
+
+function currentChatGptTurnAdditionalTools(parsed: CodexParsedRequest): unknown[] {
+  const body = rawInputRecord(parsed._rawBody);
+  const input = Array.isArray(body?.input) ? body.input : [];
+  return input.filter(value => rawInputRecord(value)?.type === "additional_tools");
+}
+
+/**
+ * Install a v1 compact replacement as the next normal request while keeping the current
+ * environment authority and user instruction as a fresh suffix. The compaction model still sees
+ * the original current instruction, which keeps native checkpoint authentication intact; we
+ * remove its bounded copy from the replacement and append the complete item afterwards.
+ */
+function automaticCompactionContinuationInput(
+  output: unknown[],
+  parsed: CodexParsedRequest,
+): unknown[] {
+  const current = currentChatGptTurnUserItem(parsed);
+  const environmentItems = currentChatGptTurnEnvironmentItems(parsed);
+  const additionalTools = currentChatGptTurnAdditionalTools(parsed);
+  const currentId = current ? rawInputId(current) : undefined;
+  const environmentIds = new Set(environmentItems.map(rawInputId).filter((id): id is string => id !== undefined));
+  const filtered = output.filter(item => {
+    if (rawInputIsEnvironment(item)) return false;
+    const id = rawInputId(item);
+    if (id !== undefined && environmentIds.has(id)) return false;
+    if (currentId !== undefined && id === currentId) return false;
+    return true;
+  });
+  return [
+    ...filtered,
+    ...additionalTools,
+    ...environmentItems,
+    ...(current ? [current] : []),
+  ];
+}
+
+async function automaticallyCompactBeforeResponse(
+  expanded: unknown,
+  parsed: CodexParsedRequest,
+  route: ChatGptWebModelRoute,
+  config: AppConfig,
+  adapterFactory: ChatGptWebAdapterFactory,
+  outerRequest: Request,
+): Promise<{ parsed: CodexParsedRequest; route: ChatGptWebModelRoute } | Response> {
+  const estimate = automaticCompactionEstimate(parsed, route, config);
+  if (!estimate || estimate.inputTokens < estimate.threshold) return { parsed, route };
+
+  const sourceBody = rawInputRecord(expanded);
+  const sourceInput = sourceBody ? rawResponsesInput(sourceBody.input) : undefined;
+  if (!sourceBody || !sourceInput || sourceInput.length === 0) return { parsed, route };
+
+  console.info(
+    `[chatgpt-web] automatic context compaction inputTokens=${estimate.inputTokens}`
+      + ` threshold=${estimate.threshold} model=${route.slug}`,
+  );
+  const compactionBody: Record<string, unknown> = {
+    ...sourceBody,
+    stream: false,
+    input: sourceInput,
+  };
+  delete compactionBody.previous_response_id;
+  const compactedResponse = await compactRequest(
+    new Request(outerRequest.url, {
+      method: "POST",
+      headers: outerRequest.headers,
+      body: JSON.stringify(compactionBody),
+      signal: outerRequest.signal,
+    }),
+    config,
+    adapterFactory,
+  );
+  if (!compactedResponse.ok) return compactedResponse;
+
+  let compacted: unknown;
+  try {
+    compacted = await compactedResponse.json();
+  } catch {
+    return formatErrorResponse(502, "invalid_response_error", "Automatic compaction returned invalid JSON");
+  }
+  const compactedRecord = rawInputRecord(compacted);
+  if (!compactedRecord || !Array.isArray(compactedRecord.output)) {
+    return formatErrorResponse(502, "invalid_response_error", "Automatic compaction returned no replacement history");
+  }
+  const continuationBody: Record<string, unknown> = {
+    ...sourceBody,
+    input: automaticCompactionContinuationInput(compactedRecord.output, parsed),
+  };
+  delete continuationBody.previous_response_id;
+  try {
+    const resumed = parseRequest(continuationBody);
+    const resumedRoute = routeChatGptWebRequest(resumed, config);
+    return { parsed: resumed, route: resumedRoute };
+  } catch (error) {
+    return formatErrorResponse(400, "invalid_request_error", error instanceof Error ? error.message : String(error));
+  }
+}
+
 export async function modelsRequest(
   req: Request,
   config: AppConfig,
@@ -509,6 +688,22 @@ export async function responseRequest(
       "Local continuation state for previous_response_id is unavailable; refusing to run ChatGPT Web with partial Codex context. Compact the Codex task or start a new task before retrying.",
     );
   }
+
+  // Native Codex normally asks for `/responses/compact`, but a long browser-backed session can
+  // cross ChatGPT's smaller transport budget before the client emits that request. Compact the
+  // canonical history here, install the bounded replacement, and continue this same Responses
+  // request so the caller never has to trim history or recover a failed browser turn itself.
+  const automaticCompaction = await automaticallyCompactBeforeResponse(
+    expanded,
+    parsed,
+    route,
+    config,
+    adapterFactory,
+    req,
+  );
+  if (automaticCompaction instanceof Response) return automaticCompaction;
+  parsed = automaticCompaction.parsed;
+  route = automaticCompaction.route;
 
   const compaction = parsed._compactionRequest === true;
   const rememberCompletedResponse = (response: Record<string, unknown>): void => {

@@ -535,6 +535,19 @@ export function saveConfig(config: AppConfig): void {
   atomicWriteFile(path, preserveUtf8Bom(`${JSON.stringify(config, null, 2)}\n`, original));
 }
 
+function honchoApiKey(): string | undefined {
+  const direct = process.env.HONCHO_API_KEY?.trim();
+  if (direct) return direct;
+  const keyPath = process.env.HONCHO_API_KEY_FILE?.trim() || join(getConfigDir(), "secrets", "honcho-api.key");
+  try {
+    if (!existsSync(keyPath)) return undefined;
+    const fromFile = readFileSync(keyPath, "utf8").trim();
+    return fromFile || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function providerConfig(config: AppConfig): CodexProviderConfig {
   const manual = config.browserInteractionMode === "manual";
   const model = manual
@@ -551,6 +564,11 @@ export function providerConfig(config: AppConfig): CodexProviderConfig {
     : config.solAvailable
     ? ["low", "medium", "high", ...(config.extraHighAvailable === true ? ["xhigh"] : []), ...(config.proAvailable ? ["max"] : [])]
     : ["low", "medium"];
+  const honchoApiKeyValue = honchoApiKey();
+  const honchoEnabled = process.env.HONCHO_ENABLED?.trim().toLowerCase() === "true"
+    || Boolean(honchoApiKeyValue);
+  const honchoContextTokens = Number.parseInt(process.env.HONCHO_CONTEXT_TOKENS ?? "2000", 10);
+  const honchoTimeoutMs = Number.parseInt(process.env.HONCHO_TIMEOUT_MS ?? "8000", 10);
   return {
     adapter: "chatgpt-web",
     baseUrl: "https://chatgpt.com",
@@ -565,6 +583,23 @@ export function providerConfig(config: AppConfig): CodexProviderConfig {
     ),
     noReasoningModels: [],
     chatgptWeb: {
+      ...(honchoEnabled ? {
+        honcho: {
+          enabled: true,
+          ...(honchoApiKeyValue ? { apiKey: honchoApiKeyValue } : {}),
+          environment: process.env.HONCHO_ENVIRONMENT === "local" ? "local" as const : "production" as const,
+          ...(process.env.HONCHO_URL?.trim() ? { baseURL: process.env.HONCHO_URL.trim() } : {}),
+          workspaceId: process.env.HONCHO_WORKSPACE_ID?.trim() || "codex-chatgpt-web",
+          userPeerId: process.env.HONCHO_USER_PEER_ID?.trim() || "codex-user",
+          assistantPeerId: process.env.HONCHO_ASSISTANT_PEER_ID?.trim() || "codex-chatgpt-web",
+          ...(Number.isSafeInteger(honchoContextTokens) && honchoContextTokens > 0
+            ? { contextTokens: honchoContextTokens }
+            : {}),
+          ...(Number.isSafeInteger(honchoTimeoutMs) && honchoTimeoutMs > 0
+            ? { timeoutMs: honchoTimeoutMs }
+            : {}),
+        },
+      } : {}),
       appName: manual ? config.manualAppName : config.automaticAppName,
       browserInteractionMode: config.browserInteractionMode,
       browserHost: config.browserHost,

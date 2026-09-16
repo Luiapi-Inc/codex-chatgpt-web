@@ -27,6 +27,11 @@ import type {
 const api = window.codexWebLauncher;
 const PANEL_TRANSITION = { duration: 0.3, ease: [0.16, 1, 0.3, 1] } as const;
 const COMPACT_SIDEBAR_QUERY = "(max-width: 820px)";
+
+function customVersionLabel(version: string): string {
+  return `Custom v${version}`;
+}
+
 const MCP_GUIDE_MEDIA = [
   new URL("./assets/mcp-create-tunnel.mp4", import.meta.url).href,
   new URL("./assets/mcp-connect-connector.mp4", import.meta.url).href,
@@ -217,7 +222,7 @@ function Onboarding({
           <span>{localized.product}</span>
           {snapshot.profile === "development" ? <em className="dev-profile-badge">{localized.devBadge}</em> : null}
         </div>
-        <span className="welcome-version no-drag">v{snapshot.version}</span>
+        <span className="welcome-version no-drag">{customVersionLabel(snapshot.version)}</span>
       </header>
 
       <AnimatePresence mode="wait">
@@ -363,9 +368,6 @@ function LauncherShell({
   const mcpOptional = snapshot.state.browserInteractionMode === "automatic"
     && snapshot.state.codexCatalogVerified === true
     && snapshot.state.mcpSetupComplete !== true;
-  const updateVisible = ["available", "downloading", "installing"].includes(snapshot.update.status);
-  const updateBusy = snapshot.update.status === "downloading" || snapshot.update.status === "installing";
-  const updateVersion = "version" in snapshot.update ? snapshot.update.version : null;
   const selectedManualTab = browser?.tabs.find(tab => tab.active && tab.interactionMode === "manual");
 
   useEffect(() => {
@@ -465,15 +467,6 @@ function LauncherShell({
   const navigateSurface = (next: Surface) => {
     setSurface(next);
     if (compactSidebar) setSidebarOpen(false);
-  };
-
-  const installUpdate = async () => {
-    setError(null);
-    try {
-      await api!.installUpdate();
-    } catch (cause) {
-      setError(messageOf(cause));
-    }
   };
 
   const dismissSessionReminder = async () => {
@@ -608,16 +601,10 @@ function LauncherShell({
             </nav>
 
             <div className="sidebar-footer">
-              {updateVisible ? (
-                <SidebarItem
-                  active={false}
-                  disabled={updateBusy || operation?.status === "running" || browser?.status === "running"}
-                  icon="update"
-                  label={updateBusy ? copy.updating : `${copy.updateAvailable} v${updateVersion}`}
-                  onClick={() => void installUpdate()}
-                  tone="update"
-                />
-              ) : null}
+              <div className="sidebar-item sidebar-version" aria-label={customVersionLabel(snapshot.version)}>
+                <Icon name="update" />
+                <span>{customVersionLabel(snapshot.version)}</span>
+              </div>
               <SidebarItem
                 active={surface === "settings"}
                 icon="settings"
@@ -1749,7 +1736,7 @@ function SettingsSurface({
           <strong>{copy.product}</strong>
           <small>
             {devProfile ? `${copy.devBadge} · ${snapshot.profilePaths.coreHome} · ` : ""}
-            {platformLabel(snapshot.platform)} · v{snapshot.version}
+            {platformLabel(snapshot.platform)} · {customVersionLabel(snapshot.version)}
           </small>
         </span>
       </div>

@@ -129,6 +129,25 @@ test("preserves native TOML editor tables inserted before the trailing hook comm
   }
 });
 
+test("restores only the managed hook when unrelated hook state tables are interleaved", () => {
+  const original = 'model = "gpt-5.6-sol"\n';
+  const installed = installCodexInterruptHook(original, "/Users/test/.codex/config.toml", {
+    runtimeCommand: ["/opt/runtime"],
+  });
+  const stateHeader = `[hooks.state.${JSON.stringify(installed.installed.stateKey)}]`;
+  const unrelatedState = [
+    '[hooks.state."/Users/test/.codex/hooks.json:pre_tool_use:0:0"]',
+    'trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"',
+    "",
+  ].join("\n");
+  const edited = installed.text.replace(stateHeader, `${unrelatedState}${stateHeader}`);
+
+  verifyCodexInterruptHook(edited, installed.installed);
+  const restored = restoreCodexInterruptHook(edited, installed.installed);
+  expect(restored).toBe(original + unrelatedState);
+  verifyCodexInterruptHookRestored(restored);
+});
+
 test("restores a hook whose end comment moved before unchanged definitions without losing MCP settings", () => {
   for (const ending of ["\n", "\r\n"]) {
     const original = 'model = "gpt-5.6-sol"\n';

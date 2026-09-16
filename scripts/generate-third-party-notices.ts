@@ -16,6 +16,7 @@ const includeLauncher = argumentsList.includes("--include-launcher");
 const destinationArgument = argumentsList.find(argument => argument !== "--include-launcher");
 const visited = new Map<string, { directory: string; manifest: PackageJson }>();
 const bundledLicenseOverrides = new Map([
+  ["@honcho-ai/sdk@2.4.0", join(root, "LICENSES", "honcho-ai-sdk-Apache-2.0.txt")],
   ["tiktoken@1.0.22", join(root, "LICENSES", "tiktoken-MIT.txt")],
 ]);
 

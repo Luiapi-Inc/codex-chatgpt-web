@@ -24,6 +24,14 @@ test("native clicks reach browser tabs instead of the window drag region", () =>
   assert.match(appSource, /className="browser-tab-drag draggable"/);
 });
 
+test("custom build version is informational and cannot trigger the updater", () => {
+  assert.match(appSource, /function customVersionLabel\(version: string\): string/);
+  assert.match(appSource, /return `Custom v\$\{version\}`/);
+  assert.match(appSource, /className="sidebar-item sidebar-version"/);
+  assert.doesNotMatch(appSource, /onClick=\{\(\) => void installUpdate\(\)\}/);
+  assert.match(stylesSource, /\.sidebar-version\s*\{[^}]*cursor:\s*default;/s);
+});
+
 test("renderer zoom scales the shell without moving or zooming the native ChatGPT surface", () => {
   assert.match(
     electronMain,

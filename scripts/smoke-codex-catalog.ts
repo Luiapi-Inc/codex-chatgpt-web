@@ -22,15 +22,23 @@ function runCodex(args: string[], env = process.env): { stdout: string; stderr: 
 
 const bundled = runCodex(["debug", "models", "--bundled"]);
 const sourceCatalog = JSON.parse(bundled.stdout) as { models?: unknown[] };
-if (!sourceCatalog.models?.some(model => model && typeof model === "object" && (model as { slug?: string }).slug === "gpt-5.6-sol")) {
-  throw new Error("Bundled Codex catalog has no gpt-5.6-sol template");
-}
+const topNativeModel = sourceCatalog.models
+  ?.filter((model): model is {
+    slug?: string;
+    priority?: number;
+    visibility?: string;
+    supported_in_api?: boolean;
+  } => Boolean(model && typeof model === "object"))
+  .filter(model => model.visibility === "list" && model.supported_in_api === true && typeof model.slug === "string")
+  .toSorted((left, right) => (left.priority ?? Number.MAX_SAFE_INTEGER) - (right.priority ?? Number.MAX_SAFE_INTEGER))[0];
+if (!topNativeModel?.slug) throw new Error("Bundled Codex catalog has no list-visible native model");
 
 const root = join(tmpdir(), `codex-chatgpt-web-codex-smoke-${process.pid}-${Date.now()}`);
 process.env.CODEX_HOME = join(root, "codex");
 process.env.CODEX_CHATGPT_WEB_HOME = join(root, "app");
 mkdirSync(process.env.CODEX_HOME, { recursive: true });
 const config = defaultConfig("browser-only");
+config.extraHighAvailable = true;
 config.proAvailable = true;
 config.subagentProtocol = "compatibility-v1";
 const catalogPath = join(root, "augmented-models.json");
@@ -67,11 +75,11 @@ try {
   if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`Codex did not preserve the fixed ChatGPT Web model contract: ${JSON.stringify(actual)}`);
   }
-  const nativeSol = catalog.models?.find(model => model.slug === "gpt-5.6-sol");
+  const nativeTop = catalog.models?.find(model => model.slug === topNativeModel.slug);
   const webPro = catalog.models?.find(model => model.slug === "chatgpt-web/pro");
-  if (nativeSol?.multi_agent_version !== "v1" || webPro?.multi_agent_version !== "v1") {
+  if (nativeTop?.multi_agent_version !== "v1" || webPro?.multi_agent_version !== "v1") {
     throw new Error(
-      `Codex did not preserve Compatibility V1 catalog metadata: ${JSON.stringify({ nativeSol, webPro })}`,
+      `Codex did not preserve Compatibility V1 catalog metadata: ${JSON.stringify({ nativeTop, webPro })}`,
     );
   }
   const features = runCodex(["features", "list"], isolatedEnv).stdout;
@@ -85,7 +93,7 @@ try {
     .slice(0, 5)
     .map(model => model.slug);
   const expectedSpawnOverrides = [
-    "gpt-5.6-sol",
+    topNativeModel.slug,
     ...CHATGPT_WEB_MODEL_ROUTES.slice(1).map(route => route.slug),
   ];
   if (JSON.stringify(spawnOverrides) !== JSON.stringify(expectedSpawnOverrides)) {

@@ -23,6 +23,7 @@ import { parseDataUrl } from "../image";
 import { ChatGptWebAdapterError } from "./adapter-error";
 import { ChatGptBrowserWorker } from "./browser-worker";
 import { extractChatGptTurnEnvironment, extractChatGptTurnIdentity, priorChatGptAbortedTurnIds } from "./environment";
+import { createChatGptHonchoMemory, honchoTurnUserText } from "./honcho-memory";
 import { CHATGPT_WEB_LUNA_MODEL_ID, resolveChatGptWebModelMode, type ChatGptWebCapabilities } from "./model";
 import { chatGptReadOnlyContextWarning, compileChatGptWebPrompt } from "./prompt";
 import { createChatGptStructuredOutputValidator } from "./output-validation";
@@ -382,6 +383,7 @@ export function createChatGptWebAdapter(
       ? resolve(expandUserPath(provider.chatgptWeb.lunaCheckpointStatePath))
       : undefined,
   );
+  const honchoMemory = createChatGptHonchoMemory(provider.chatgptWeb?.honcho);
   const currentUsageInput = (parsed: CodexParsedRequest): CodexParsedRequest => (
     parsed.modelId === CHATGPT_WEB_LUNA_MODEL_ID && !parsed._compactionRequest
       ? lunaCheckpointStore.apply(parsed).parsed
@@ -394,6 +396,7 @@ export function createChatGptWebAdapter(
     traceId: string,
     turnCapabilities: ChatGptWebCapabilities,
     hooks: { onCompactionProgress?: () => void } = {},
+    honchoMemoryText?: string,
   ): ChatGptTurnRuntime => {
     const manualRequest = isChatGptWebZeroRiskBackendModel(parsed.modelId);
     if (manualRequest !== manualInteraction) {
@@ -429,11 +432,13 @@ export function createChatGptWebAdapter(
       }
       : undefined;
     const compileOptionsFor = (input: CodexParsedRequest) => {
-      if (manualRequest) return {};
+      const options = honchoMemoryText ? { honchoMemory: honchoMemoryText } : {};
+      if (manualRequest) return options;
       const experimentalMultipartParts = experimentalBiggerContext
         ? resolveBiggerContextMultipartParts(input, turnCapabilities)
         : undefined;
       return {
+        ...options,
         captureLunaCheckpoint,
         ...(experimentalMultipartParts !== undefined
           ? { experimentalMultipartParts }
@@ -532,14 +537,14 @@ export function createChatGptWebAdapter(
             checkpointInput.parsed,
             turnCapabilities,
             activeToken,
-            { manualControl: true },
+            { manualControl: true, ...(honchoMemoryText ? { honchoMemory: honchoMemoryText } : {}) },
           );
           const resumeCompiled = resumeInput
             ? compileChatGptWebPrompt(
               resumeInput,
               turnCapabilities,
               activeToken,
-              { manualControl: true },
+              { manualControl: true, ...(honchoMemoryText ? { honchoMemory: honchoMemoryText } : {}) },
             )
             : undefined;
           for (const candidate of [compiled, resumeCompiled]) {
@@ -838,6 +843,20 @@ export function createChatGptWebAdapter(
           });
           return;
         }
+        const honchoContext = await honchoMemory.context(parsed, incoming.abortSignal);
+        const honchoIdentity = extractChatGptTurnIdentity(parsed);
+        const rememberHonchoTurn = (answer: string): void => {
+          if (parsed._compactionRequest || !honchoIdentity.threadId) return;
+          const userText = honchoTurnUserText(parsed);
+          if (!userText || !answer.trim()) return;
+          void honchoMemory.recordTurn({
+            threadId: honchoIdentity.threadId,
+            ...(honchoIdentity.turnId ? { turnId: honchoIdentity.turnId } : {}),
+            modelId: parsed.modelId,
+            userText,
+            assistantText: answer,
+          });
+        };
         let environment: ReturnType<typeof extractChatGptTurnEnvironment> | undefined;
         if (mode.localTools) {
           try {
@@ -1121,7 +1140,7 @@ export function createChatGptWebAdapter(
         const session = await chatGptTurnSessions.getOrCreateAfterOwnerRetirement(
           executionKey,
           ownerKey,
-          () => startRuntime(parsed, environment, traceId, turnCapabilities),
+          () => startRuntime(parsed, environment, traceId, turnCapabilities, {}, honchoContext),
           traceId,
           incoming.abortSignal,
           nativeTurnId,
@@ -1196,6 +1215,7 @@ export function createChatGptWebAdapter(
                 buffer,
               ));
               session.completeRound(roundKey);
+              rememberHonchoTurn(settled.answer);
               chatGptWebTurnRetryPolicy.clear(retryKey);
               return;
             }
@@ -1302,6 +1322,7 @@ export function createChatGptWebAdapter(
                   buffer,
                 ));
                 session.completeRound(roundKey);
+                rememberHonchoTurn(completedOutcome.answer);
                 chatGptWebTurnRetryPolicy.clear(retryKey);
               };
               const waitForTrace = () => session.runtime.trace.wait(toolWaitAbort.signal)

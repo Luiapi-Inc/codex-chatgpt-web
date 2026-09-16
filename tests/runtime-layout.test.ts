@@ -29,6 +29,9 @@ import {
 const roots: string[] = [];
 afterEach(() => {
   delete process.env.CODEX_CHATGPT_WEB_HOME;
+  delete process.env.HONCHO_API_KEY;
+  delete process.env.HONCHO_API_KEY_FILE;
+  delete process.env.HONCHO_ENABLED;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -235,6 +238,20 @@ test("launcher browser ownership is explicit in provider configuration", () => {
     browserHostDescriptorPath: config.browserHostDescriptorPath,
     solAvailable: true,
     stallTimeoutSec: 900,
+  });
+});
+
+test("provider configuration reads Honcho credentials from an explicit secret file", () => {
+  const root = join(tmpdir(), `codex-chatgpt-web-honcho-${process.pid}-${Date.now()}`);
+  roots.push(root);
+  mkdirSync(root, { recursive: true });
+  const keyPath = join(root, "honcho-api.key");
+  writeFileSync(keyPath, "test-honcho-key\n");
+  process.env.HONCHO_API_KEY_FILE = keyPath;
+
+  expect(providerConfig(defaultConfig("browser-only")).chatgptWeb?.honcho).toMatchObject({
+    enabled: true,
+    apiKey: "test-honcho-key",
   });
 });
 

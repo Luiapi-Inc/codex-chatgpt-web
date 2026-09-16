@@ -6,7 +6,14 @@ import { ChatGptBrowserWorker } from "../src/adapters/chatgpt-web/browser-worker
 import { resolveChatGptWebModelMode } from "../src/adapters/chatgpt-web/model";
 import { ChatGptExternalTurnProgress } from "../src/adapters/chatgpt-web/turn-progress";
 
-test.each([[true, false, true], [false, false, true], [true, true, true], [true, false, false]])("browser turns preserve recovery, ordering and final-only tools (owned=%s, tools=%s, multipart=%s)", async (owned, tools, multipart) => {
+test.each([
+  [true, false, true, false],
+  [false, false, true, false],
+  [true, true, true, false],
+  [true, false, false, false],
+  [true, false, false, true],
+  [true, true, true, true],
+])("browser turns preserve recovery, ordering and final-only tools (owned=%s, tools=%s, multipart=%s, reused=%s)", async (owned, tools, multipart, reused) => {
   const diagnostics = mkdtempSync(join(tmpdir(), "compaction-observation-"));
   const finalResponse = new Error("fixture reached final response observation");
   const capabilities = { localToolsEnabled: tools, solAvailable: true, extraHighAvailable: true, proAvailable: true };
@@ -56,6 +63,12 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
     },
     waitForMultipartAcknowledgement: async () => { actions.push("ack"); },
   });
+  const prepare = async () => ({
+    text: "Summarize the context",
+    images: [],
+    multipart: multipart ? { parts: ['{"part":1}', '{"part":2}', '{"part":3}'], commit: "Summarize" } : undefined,
+    release: () => { released = true; },
+  });
   try {
     await expect(worker.runBrowserTurn({
       traceId: "compaction_recovery_fixture",
@@ -68,18 +81,24 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
         begin: async () => { throw new Error("fixture must stop before completion"); },
         commit: async () => { throw new Error("fixture must stop before completion"); },
       } : undefined,
-      prepare: async () => ({ text: "Summarize the context", images: [], multipart: multipart ? { parts: ['{"part":1}', '{"part":2}', '{"part":3}'], commit: "Summarize" } : undefined, release: () => { released = true; } }),
-    }, owned ? "owned-surface" : undefined, page)).rejects.toBe(finalResponse);
+      prepare,
+      ...(reused ? { prepareResume: prepare } : {}),
+    }, owned ? "owned-surface" : undefined, page, reused)).rejects.toBe(finalResponse);
     expect(recoveryCallbacks.map(callback => typeof callback)).toEqual(
       Array(multipart ? 6 : 2).fill(owned ? "function" : "undefined"),
     );
     expect(actions).toEqual([
-      ...(multipart ? [
+      ...(!reused && multipart ? [
         "effort:low",
         "attach:plain", "send", "observe", "ack",
         "attach:plain", "send", "observe", "ack",
       ] : []),
-      "effort:high",
+      ...(!reused && !multipart ? ["effort:high"] : []),
+      ...(reused && multipart ? [
+        "attach:plain", "send", "observe", "ack",
+        "attach:plain", "send", "observe", "ack",
+      ] : []),
+      ...(!reused && multipart ? ["effort:high"] : []),
       tools ? "attach:tools" : "attach:plain", "files", "send", "observe",
     ]);
     expect(sendBudgets).toEqual(multipart ? [180_000, 180_000, 180_000] : [20_000]);

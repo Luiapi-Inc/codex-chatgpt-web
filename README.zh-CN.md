@@ -117,6 +117,22 @@ Zero Risk 不读取或操作 ChatGPT 页面。请自行选择模型和 `Codex Ze
 取消保留的浏览器任务，或在卸载前移除 Codex 集成。仅在需要为每个浏览器检查点保存截图时设置
 `CODEX_CHATGPT_WEB_BROWSER_DIAGNOSTICS=1`。
 
+### 可选 Honcho 记忆
+
+启动 bridge 前设置 `HONCHO_API_KEY` 可启用持久任务记忆。自动启动的 launcher 也可以从
+`~/.codex-chatgpt-web/secrets/honcho-api.key` 读取权限为 `0600` 的密钥；可用
+`HONCHO_API_KEY_FILE` 覆盖该路径。
+
+```bash
+export HONCHO_API_KEY="..."
+export HONCHO_WORKSPACE_ID="codex-chatgpt-web"
+export HONCHO_CONTEXT_TOKENS=2000
+export HONCHO_TIMEOUT_MS=8000
+```
+
+还可通过 `HONCHO_URL`、`HONCHO_ENVIRONMENT`、`HONCHO_USER_PEER_ID` 和
+`HONCHO_ASSISTANT_PEER_ID` 配置自托管或多用户部署。
+
 新安装默认使用 **Compatibility V1** 以支持跨后端 subagent。**Native** 会保留 Codex 自身的
 功能设置，并启用明文 Web-to-Web V2 委派。切换协议后，请重启 Codex 并创建新任务：
 

@@ -780,6 +780,18 @@ export async function runChatGptMcpServer(options: {
         limit: z.number().int().min(1).max(50).default(20),
         include_schema: z.boolean().default(true),
       },
+      outputSchema: {
+        tools: z.array(z.object({
+          wire_name: z.string(),
+          name: z.string(),
+          namespace: z.string().nullable(),
+          description: z.string(),
+          kind: z.string(),
+          parameters: z.record(z.string(), z.unknown()).optional(),
+        })),
+        total: z.number().int().nonnegative(),
+        next_offset: z.number().int().nonnegative().nullable(),
+      },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async (input, extra) => withClaimedTurn(

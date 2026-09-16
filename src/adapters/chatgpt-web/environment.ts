@@ -46,6 +46,42 @@ export interface ChatGptTurnUserRevision {
   itemId?: string;
 }
 
+/**
+ * Contextual items that must survive an automatic replacement-history compaction.
+ *
+ * The compaction response intentionally bounds ordinary user history. The environment envelope
+ * is different: it is the current turn's trusted authority, not conversational history, and
+ * dropping or truncating it would make a subsequent tool-capable turn fail closed.
+ */
+export function currentChatGptTurnEnvironmentItems(parsed: CodexParsedRequest): unknown[] {
+  const body = record(parsed._rawBody);
+  const input = Array.isArray(body?.input) ? body.input : [];
+  const turnId = extractChatGptTurnIdentity(parsed).turnId;
+  return input.filter(value => {
+    const item = record(value);
+    if (item?.type !== "message" || item.role !== "user") return false;
+    if (!/<\/?environment_context\b/i.test(rawMessageText(item))) return false;
+    const owner = itemTurnId(item);
+    return owner === undefined || owner === turnId;
+  });
+}
+
+/** Return the current human instruction as a raw Responses item for automatic compaction. */
+export function currentChatGptTurnUserItem(parsed: CodexParsedRequest): Record<string, unknown> | undefined {
+  const body = record(parsed._rawBody);
+  const input = Array.isArray(body?.input) ? body.input : [];
+  const turnId = extractChatGptTurnIdentity(parsed).turnId;
+  const metadata = clientTurnMetadata(parsed);
+  for (let index = input.length - 1; index >= 0; index -= 1) {
+    const item = record(input[index]);
+    if (!isUserOrParentInstruction(item, metadata)) continue;
+    const owner = itemTurnId(item);
+    if (owner !== undefined && owner !== turnId) continue;
+    return item;
+  }
+  return undefined;
+}
+
 export const CHATGPT_TURN_REVISION_CONFLICT_MESSAGE =
   "ChatGPT web current user message conflicts with native Codex turn_id metadata";
 

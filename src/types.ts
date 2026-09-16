@@ -39,6 +39,11 @@ export interface CodexUserMessage {
   role: "user";
   content: string | CodexContentPart[];
   timestamp: number;
+  /** Stable Responses item identity when supplied by the native Codex wire. */
+  messageId?: string;
+  /** Codex-generated user-role payloads are context and can never become the active human request. */
+  provenance?: "human" | "codex_context";
+  contextKind?: "skill" | "operational";
 }
 
 /** A readable MultiAgent message delivered between native Codex agents. */
@@ -48,6 +53,7 @@ export interface CodexAgentMessage {
   recipient?: string;
   content: string | CodexContentPart[];
   timestamp: number;
+  messageId?: string;
 }
 
 export interface CodexAssistantMessage {
@@ -57,12 +63,14 @@ export interface CodexAssistantMessage {
   phase?: CodexMessagePhase;
   model?: string;
   timestamp: number;
+  messageId?: string;
 }
 
 export interface CodexDeveloperMessage {
   role: "developer";
   content: string | CodexContentPart[];
   timestamp: number;
+  messageId?: string;
 }
 
 export interface CodexToolResultMessage {
@@ -75,6 +83,7 @@ export interface CodexToolResultMessage {
   content: string | CodexContentPart[];
   isError: boolean;
   timestamp: number;
+  messageId?: string;
 }
 
 export interface CodexTextContent {
@@ -260,6 +269,20 @@ export interface CodexProviderConfig {
   modelDefaultReasoningEfforts?: Record<string, string>;
   noReasoningModels?: string[];
   chatgptWeb?: {
+    /** Optional durable conversation memory backed by Honcho. */
+    honcho?: {
+      enabled?: boolean;
+      apiKey?: string;
+      environment?: "local" | "production";
+      baseURL?: string;
+      workspaceId?: string;
+      userPeerId?: string;
+      assistantPeerId?: string;
+      /** Maximum memory context tokens injected into each browser prompt. */
+      contextTokens?: number;
+      /** Bound memory calls so a slow service never stalls a browser turn indefinitely. */
+      timeoutMs?: number;
+    };
     /** ChatGPT custom connector attached to tool-capable temporary chats. */
     appName?: string;
     /** Whether ChatGPT DOM interaction is automatic or explicitly driven by the user. */

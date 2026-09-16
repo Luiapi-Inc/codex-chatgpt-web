@@ -30,6 +30,7 @@ export interface BrokerToolResult {
 
 interface PendingInvocation {
   request: BrokerToolRequest;
+  fingerprint: string;
   resolve: (result: BrokerToolResult) => void;
   reject: (error: Error) => void;
 }
@@ -69,6 +70,7 @@ interface TurnChannel {
   queuedCallIds: string[];
   deliveredCallIds: Set<string>;
   invocations: Map<string, PendingInvocation>;
+  deterministicFailures: Map<string, number>;
   waiters: Set<ToolWaiter>;
   compactionRequested: boolean;
   compactionResult?: BrokerToolResult;
@@ -141,6 +143,22 @@ interface BrokerResponse {
 const brokers = new Map<string, TurnBroker>();
 const MAX_BROKER_LINE_CHARS = 67_108_864;
 const MAX_RETIRED_TURN_HANDLES = 64;
+const MAX_SAME_DETERMINISTIC_FAILURES = 2;
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function toolInvocationFingerprint(request: Omit<BrokerToolRequest, "callId">): string {
+  return createHash("sha256").update(canonicalJson(request)).digest("hex");
+}
 
 export async function closeTurnBrokers(): Promise<void> {
   const active = [...brokers.values()];
@@ -299,6 +317,7 @@ export class TurnBroker implements TurnBrokerOwner {
       queuedCallIds: [],
       deliveredCallIds: new Set(),
       invocations: new Map(),
+      deterministicFailures: new Map(),
       waiters: new Set(),
       compactionRequested: false,
       compactionDeliveryCount: 0,
@@ -429,6 +448,14 @@ export class TurnBroker implements TurnBrokerOwner {
       throw new Error(`tool call was completed before it was delivered: ${callId}`);
     }
     channel.invocations.delete(callId);
+    if (result.isError === true) {
+      channel.deterministicFailures.set(
+        invocation.fingerprint,
+        (channel.deterministicFailures.get(invocation.fingerprint) ?? 0) + 1,
+      );
+    } else {
+      channel.deterministicFailures.delete(invocation.fingerprint);
+    }
     console.info(`[chatgpt-web] broker trace=${channel.traceId} completed call=${callId.slice(0, 17)} pending=${channel.invocations.size}`);
     invocation.resolve(result);
   }
@@ -1114,6 +1141,17 @@ export class TurnBroker implements TurnBrokerOwner {
 
     const wireName = request.wireName?.trim();
     if (!wireName) throw new Error("wire tool name is required");
+    const fingerprint = toolInvocationFingerprint({
+      wireName,
+      freeform: request.freeform === true,
+      ...(request.freeform === true ? { input: request.input ?? "" } : { arguments: request.arguments ?? {} }),
+    });
+    if ((binding.channel.deterministicFailures.get(fingerprint) ?? 0) >= MAX_SAME_DETERMINISTIC_FAILURES) {
+      throw new Error(
+        "WAITING_FOR_EVIDENCE: the same Codex Native action failed deterministically twice; "
+        + "change its inputs or obtain new environment evidence before retrying",
+      );
+    }
     const callId = opaqueId("call");
     const toolRequest: BrokerToolRequest = {
       callId,
@@ -1122,7 +1160,7 @@ export class TurnBroker implements TurnBrokerOwner {
       ...(request.freeform === true ? { input: request.input ?? "" } : { arguments: request.arguments ?? {} }),
     };
     return new Promise<BrokerToolResult>((resolveInvoke, rejectInvoke) => {
-      binding.channel.invocations.set(callId, { request: toolRequest, resolve: resolveInvoke, reject: rejectInvoke });
+      binding.channel.invocations.set(callId, { request: toolRequest, fingerprint, resolve: resolveInvoke, reject: rejectInvoke });
       binding.channel.queuedCallIds.push(callId);
       console.info(
         `[chatgpt-web] broker trace=${binding.channel.traceId} queued call=${callId.slice(0, 17)} tool=${wireName} waiters=${binding.channel.waiters.size}`,

@@ -519,6 +519,69 @@ test("preserves a structured browser preflight failure through the v1 compaction
   });
 });
 
+test("automatically compacts before a normal Responses turn and preserves the current task", async () => {
+  const config = defaultConfig("browser-only");
+  const history = Array.from({ length: 24 }, (_, index) => ({
+    type: "message",
+    role: "user",
+    id: `msg_history_${index}`,
+    content: [{ type: "input_text", text: `Historical requirement ${index}: ${"detail ".repeat(4_000)}` }],
+  }));
+  const current = {
+    type: "message",
+    role: "user",
+    id: "msg_current_auto_compact",
+    content: [{ type: "input_text", text: "Continue the implementation and verify the final response path." }],
+  };
+  const additionalTools = {
+    type: "additional_tools",
+    tools: [{ type: "function", name: "mcp__workspace__read", description: "Read", parameters: { type: "object" } }],
+  };
+  const environment = {
+    type: "message",
+    role: "user",
+    id: "msg_current_environment",
+    content: [{ type: "input_text", text: "<environment_context><cwd>/workspace</cwd></environment_context>" }],
+  };
+  const calls: boolean[] = [];
+  const response = await responseRequest(new Request("http://127.0.0.1:17841/v1/responses", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ model, stream: false, input: [...history, additionalTools, environment, current] }),
+  }), config, () => ({
+    name: "automatic-compaction-check",
+    async runTurn(parsed, _incoming, emit) {
+      calls.push(parsed._compactionRequest === true);
+      if (parsed._compactionRequest) {
+        emit({ type: "text_delta", text: summary, phase: "final_answer" });
+        emit({ type: "done", stopReason: "stop", endTurn: true });
+        return;
+      }
+      expect(parsed.context.messages).toContainEqual(expect.objectContaining({
+        role: "user",
+        content: "Continue the implementation and verify the final response path.",
+      }));
+      expect(parsed.context.tools).toContainEqual(expect.objectContaining({
+        name: "mcp__workspace__read",
+      }));
+      expect(parsed.context.messages).toContainEqual(expect.objectContaining({
+        role: "user",
+        content: "<environment_context><cwd>/workspace</cwd></environment_context>",
+      }));
+      expect(parsed.context.messages.some(message => (
+        message.role === "user" && typeof message.content === "string"
+          && message.content.includes(`${SUMMARY_PREFIX}\n${summary}`)
+      ))).toBeTrue();
+      emit({ type: "text_delta", text: "Continued after automatic compaction", phase: "final_answer" });
+      emit({ type: "done", stopReason: "stop", endTurn: true });
+    },
+  }));
+
+  expect(response.status).toBe(200);
+  expect(calls).toEqual([true, false]);
+  expect((await response.json() as { status: string }).status).toBe("completed");
+});
+
 test("refuses a ChatGPT Web continuation when local previous-response state is unavailable", async () => {
   const response = await responseRequest(new Request("http://127.0.0.1:17841/v1/responses", {
     method: "POST",

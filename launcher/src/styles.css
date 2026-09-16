@@ -404,6 +404,16 @@ code {
   color: var(--blue-300);
 }
 
+.sidebar-version {
+  cursor: default;
+  user-select: none;
+}
+
+.sidebar-version:hover {
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
 .sidebar-item > svg {
   width: 16px;
   height: 16px;

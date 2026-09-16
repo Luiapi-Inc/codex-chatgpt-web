@@ -21,12 +21,17 @@ export const BRIDGE_COMPACTION_PREFIX = "ocx1:";
 export const COMPACT_PROMPT = `You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task.
 
 Include:
-- Current progress and key decisions made
-- Important context, constraints, or user preferences
-- What remains to be done (clear next steps)
-- Any critical data, examples, or references needed to continue
+- The current task and every requirement that still governs it
+- Decisions made and why they were made
+- Code/files changed, commands run, and verified results
+- Active error state, blockers, and failed approaches that must not be repeated
+- Pending work and the exact next useful actions
+- Important context, constraints, user preferences, examples, or references needed to continue
 
-Be concise, structured, and focused on helping the next LLM seamlessly continue the work.`;
+Be concise but lossless for the active task. Prefer concrete paths, identifiers, commands, and
+observable results over generic narration. This checkpoint will be installed automatically before
+the browser context limit is reached and the next turn must continue the same task without asking
+the user to restate it.`;
 
 /** Mirrors codex-rs core/templates/compact/summary_prefix.md (framing for a replayed summary). */
 export const SUMMARY_PREFIX = "Another language model started to solve this problem and produced a summary of its thinking process. You also have access to the state of the tools that were used by that language model. Use this to build on the work that has already been done and avoid duplicating work. Here is the summary produced by the other language model, use the information in this summary to assist with your own analysis:";

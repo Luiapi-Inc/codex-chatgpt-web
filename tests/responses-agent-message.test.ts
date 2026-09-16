@@ -30,7 +30,7 @@ function request() {
 function inlineMessages(text: string): Array<Record<string, unknown>> {
   const match = text.match(/<codex_context_json>\n([^\n]+)\n<\/codex_context_json>/);
   if (!match?.[1]) throw new Error("inline Codex context JSON missing");
-  return (JSON.parse(match[1]) as { messages: Array<Record<string, unknown>> }).messages;
+  return (JSON.parse(match[1]) as { task: { messages: Array<Record<string, unknown>> } }).task.messages;
 }
 
 test("parser preserves plaintext agent-message routing metadata", () => {
@@ -47,13 +47,13 @@ test("parser preserves plaintext agent-message routing metadata", () => {
 test("inline Web context emits a distinct agent_message envelope", () => {
   const compiled = compileChatGptWebPrompt(request(), capabilities, turnToken);
   const messages = inlineMessages(compiled.text);
-  expect(messages[0]).toEqual({
+  expect(messages[0]).toMatchObject({
     role: "agent_message",
     author: "parent",
     recipient: "child",
     content: "Inspect the failing request and report evidence.",
   });
-  expect(messages[1]).toEqual({
+  expect(messages[1]).toMatchObject({
     role: "user",
     content: "Continue from the agent report.",
   });
@@ -74,7 +74,7 @@ test("multipart Web context emits the same agent_message envelope", () => {
   const messages = records
     .filter(record => record.kind === "message")
     .map(record => record.message as Record<string, unknown>);
-  expect(messages[0]).toEqual({
+  expect(messages[0]).toMatchObject({
     role: "agent_message",
     author: "parent",
     recipient: "child",
@@ -98,5 +98,5 @@ test("agent messages do not invent missing routing identity or fallback content"
   expect(parsed.context.messages[0]).not.toHaveProperty("author");
   expect(parsed.context.messages[0]).not.toHaveProperty("recipient");
   const messages = inlineMessages(compileChatGptWebPrompt(parsed, capabilities, turnToken).text);
-  expect(messages[0]).toEqual({ role: "agent_message", content: "" });
+  expect(messages[0]).toMatchObject({ role: "agent_message", content: "" });
 });

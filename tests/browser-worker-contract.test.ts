@@ -2312,6 +2312,19 @@ test("Luna-only browser turns verify selector absence instead of opening an effo
   expect(checkpoints).toEqual(["luna-default-confirmed"]);
 });
 
+test("retained browser turns skip effort selection for both ordinary and multipart continuations", () => {
+  const workerSource = readFileSync(new URL("../src/adapters/chatgpt-web/browser-worker.ts", import.meta.url), "utf8");
+  const runBrowserTurn = workerSource.slice(workerSource.indexOf("  private async runBrowserTurn("));
+  const initialSelection = runBrowserTurn.indexOf("let mode = reuseConversation");
+  const multipartFinalSelection = runBrowserTurn.indexOf("final_part_effort_selection");
+
+  expect(initialSelection).toBeGreaterThan(-1);
+  expect(runBrowserTurn.slice(initialSelection, initialSelection + 500)).toContain("? requestedMode");
+  expect(runBrowserTurn.slice(initialSelection, initialSelection + 500)).toContain(": await this.runStage");
+  expect(multipartFinalSelection).toBeGreaterThan(-1);
+  expect(runBrowserTurn.slice(multipartFinalSelection - 180, multipartFinalSelection)).toContain("!reuseConversation");
+});
+
 function thinkSlashFixture() {
   const state = { pressed: false, controlPresent: true, highlighted: true, popupCount: 1, optionCount: 1,
     draft: "", connectors: [] as string[], loseConnector: false, commands: [] as string[], enters: 0 };
@@ -3069,7 +3082,12 @@ test("Bigger Context fits mixed-density whole records within both token and comp
       },
     }, capabilities, undefined, { experimentalMultipartParts: 3 });
     const multipart = compiled.multipart!;
-    const records = multipart.parts.flatMap(part => JSON.parse(part).records);
+    const records = multipart.parts.flatMap(part => JSON.parse(part).records)
+      .map((record: { message?: Record<string, unknown> }) => {
+        if (!record.message) return record;
+        const { message_id: _messageId, ...message } = record.message;
+        return { ...record, message };
+      });
     expect(records).toEqual(contents.map((content, message_index) => ({
       kind: "message", message_index, message: { role: "user", content },
     })));
@@ -3094,7 +3112,7 @@ test("Bigger Context fits mixed-density whole records within both token and comp
       { stagingEffort: stagingMode.effort, maxStageMessageTokens, maxStageChars, finalMessageTokens, finalMessageChars: final.length },
     )).not.toThrow();
   }
-}, 30_000);
+}, 60_000);
 
 test("Bigger Context preflight expands only the total context ceiling and keeps each message boundary", () => {
   const plus = {

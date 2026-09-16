@@ -117,6 +117,27 @@ Use **Activity** for safe local diagnostics and **Settings → Run doctor** for 
 Settings can also cancel a retained browser turn or remove the Codex integration before uninstall.
 Set `CODEX_CHATGPT_WEB_BROWSER_DIAGNOSTICS=1` only when every browser checkpoint needs a screenshot.
 
+### Optional Honcho memory
+
+Set `HONCHO_API_KEY` before starting the bridge to enable durable memory for ChatGPT Web turns.
+For a launcher that starts automatically, the key may instead be stored with mode `0600` at
+`~/.codex-chatgpt-web/secrets/honcho-api.key`; `HONCHO_API_KEY_FILE` can override that path.
+The bridge uses one Honcho session per native Codex `thread_id`, injects a bounded summarized
+context into the next compiled prompt, and records the user request plus completed answer after a
+successful turn. Memory calls time out and fall back to the normal prompt path if Honcho is
+unavailable.
+
+```bash
+export HONCHO_API_KEY="..."
+export HONCHO_WORKSPACE_ID="codex-chatgpt-web"
+export HONCHO_CONTEXT_TOKENS=2000
+export HONCHO_TIMEOUT_MS=8000
+```
+
+`HONCHO_URL`, `HONCHO_ENVIRONMENT`, `HONCHO_USER_PEER_ID`, and `HONCHO_ASSISTANT_PEER_ID` are
+available for self-hosted or multi-user deployments. The bounded memory budget is included in the
+pre-send context estimate so automatic compaction still happens before the browser limit.
+
 New installs use **Compatibility V1** for cross-backend subagents. **Native** preserves Codex's own
 feature settings and enables plaintext Web-to-Web V2 delegation. Restart Codex and start a new task
 after changing the protocol:

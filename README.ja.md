@@ -119,6 +119,22 @@ ChatGPT のツール呼び出しを現在の Codex タスクへ接続します�
 アンインストール前の Codex 統合削除も行えます。すべてのブラウザーチェックポイントでスクリーンショットが必要な場合にのみ、
 `CODEX_CHATGPT_WEB_BROWSER_DIAGNOSTICS=1` を設定してください。
 
+### オプションの Honcho メモリ
+
+bridge の起動前に `HONCHO_API_KEY` を設定すると、永続的なタスクメモリを有効にできます。
+自動起動する launcher は、権限 `0600` の `~/.codex-chatgpt-web/secrets/honcho-api.key`
+からもキーを読み取れます。`HONCHO_API_KEY_FILE` でこのパスを変更できます。
+
+```bash
+export HONCHO_API_KEY="..."
+export HONCHO_WORKSPACE_ID="codex-chatgpt-web"
+export HONCHO_CONTEXT_TOKENS=2000
+export HONCHO_TIMEOUT_MS=8000
+```
+
+セルフホストまたはマルチユーザー構成では、`HONCHO_URL`、`HONCHO_ENVIRONMENT`、
+`HONCHO_USER_PEER_ID`、`HONCHO_ASSISTANT_PEER_ID` も利用できます。
+
 新規インストールでは、クロスバックエンドのサブエージェントに **Compatibility V1** を使用します。
 **Native** は Codex 独自の機能設定を維持し、プレーンテキストの Web-to-Web V2 delegation を有効にします。
 プロトコル変更後は Codex を再起動し、新しいタスクを開始してください。
