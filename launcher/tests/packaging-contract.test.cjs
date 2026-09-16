@@ -197,6 +197,13 @@ test("Linux AppImage fallback uses one owned extraction and removes it on exit",
   }
 });
 
+test("Linux package smoke launches through the shipped AppImage runner fallback", () => {
+  const smoke = fs.readFileSync(path.join(launcherRoot, "scripts", "smoke-package.cjs"), "utf8");
+  assert.match(smoke, /assets.*linux-appimage-runner\.sh/);
+  assert.match(smoke, /args = \["-a", runner, executable, "--launcher-smoke-test"\]/);
+  assert.match(smoke, /APPIMAGE_EXTRACT_AND_RUN = "1"/);
+});
+
 test("Linux packaging replaces libnotify in an owned AppImage toolset before assembly", () => {
   const source = fs.readFileSync(path.join(launcherRoot, "scripts", "prepare-linux-appimage-tools.cjs"), "utf8");
   const prepare = fs.readFileSync(path.join(repositoryRoot, "scripts", "prepare-linux-libnotify.sh"), "utf8");

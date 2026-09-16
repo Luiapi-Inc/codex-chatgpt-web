@@ -92,8 +92,9 @@ try {
     run(path.join(launcherRoot, "scripts", "smoke-linux-appimage-symbols.sh"), [executable], {
       timeout: 120_000,
     });
+    const runner = path.join(launcherRoot, "assets", "linux-appimage-runner.sh");
     command = "xvfb-run";
-    args = ["-a", executable, "--launcher-smoke-test"];
+    args = ["-a", runner, executable, "--launcher-smoke-test"];
     env.APPIMAGE_EXTRACT_AND_RUN = "1";
   } else if (process.platform === "win32") {
     const installer = artifact(/-win-x64\.exe$/, "Windows installer");
