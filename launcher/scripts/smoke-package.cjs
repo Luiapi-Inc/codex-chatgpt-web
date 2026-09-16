@@ -61,7 +61,7 @@ function artifact(pattern, label) {
 }
 
 function smokeEnvironment() {
-  return {
+  const env = {
     ...process.env,
     TMPDIR: scratch,
     CODEX_WEB_GPT_LAUNCHER_DATA_DIR: path.join(scratch, "launcher-data"),
@@ -69,6 +69,8 @@ function smokeEnvironment() {
     CODEX_HOME: path.join(scratch, "codex-home"),
     CODEX_WEB_GPT_SMOKE_FILE: markerPath,
   };
+  if (process.platform === "linux") env.XDG_RUNTIME_DIR = scratch;
+  return env;
 }
 
 try {
