@@ -2,7 +2,9 @@
 
 Candidate: `5.0.7`
 
-Commit: `920ffd9`
+Candidate commit: `016243a28973b234ce32c64bbe620f32061d753f`
+
+Packaged artifact source commit: `920ffd9` (stale for candidate-bound release acceptance)
 
 Platform: Linux `7.0.0-1012-aws` x86_64 on host `hermes`
 
@@ -20,25 +22,32 @@ Install path: upgrade/redeploy evidence is present because `5.0.6-linux-x64` and
 
 ## Deterministic verification
 
-- Packaging contract: PASS — 12/12 tests.
-- Transport acceptance checker: PASS — 2/2 tests, including stale-candidate rejection.
-- Artifact SHA-256 rechecked for this candidate: `ed88cf9d22894adb7a47cc7a5ed5f6205d8fa9adb9477c9faa0e8a84f6a2c0f2`.
-- Full `bun run verify`: NOT PASSED on this host — 719 pass / 1 skip / 1 fail. The failing test was `native interruption before registration prevents the detached compaction from starting`, which exceeded Bun's default 5-second test timeout during the full suite.
-- The same failing test passed in isolation in 381 ms. A whole-file rerun then passed that test in 3.64 s but exposed another heavy Bigger Context compaction case exceeding the same 5-second default timeout. This is recorded as unresolved verification timing evidence; it is not treated as an acceptance pass.
-- Earlier candidate evidence remains historical only and does not satisfy candidate-bound acceptance for `920ffd9`.
+- Full `bun run verify`: PASS on 2026-09-16T21:15:29+07:00 with Bun 1.4.0 on Linux `7.0.0-1012-aws` x86_64. Runtime tests: 720 pass / 1 skip / 0 fail across 53 files. Launcher tests: 309 pass / 0 fail. Version sync, root and launcher dependency audits, root and launcher typechecks, launcher build, runtime bundle build, third-party notice generation, and relocatable runtime smoke also passed.
+- The two compaction fixtures that previously exceeded Bun's default five-second timeout passed under their candidate-specific 30-second test budgets. During this full run, `native interruption before registration prevents the detached compaction from starting` completed in 32.79 ms and the Bigger Context canonical-context rebuild completed in 4.31 s.
+- Transport acceptance checker: PASS — 2/2 tests within the candidate-bound full verification, including stale-candidate rejection.
+- Packaging contract: historical PASS — 12/12 tests for the artifact built from `920ffd9`; this result is stale for `016243a28973b234ce32c64bbe620f32061d753f` and must be regenerated before release acceptance.
+- Existing artifact SHA-256 rechecked: `ed88cf9d22894adb7a47cc7a5ed5f6205d8fa9adb9477c9faa0e8a84f6a2c0f2`.
+- The AppImage hash remains valid for the existing artifact, but its build provenance is `920ffd9`; it is not candidate-bound evidence for `016243a28973b234ce32c64bbe620f32061d753f`.
+- Earlier candidate evidence remains historical only and does not satisfy candidate-bound acceptance for `016243a28973b234ce32c64bbe620f32061d753f`.
 
 ## Doctor
 
-Latest result during an active Codex turn: `ok: false`.
+Latest result during an active Codex turn on 2026-09-16: failed before a structured report was returned.
 
-Passing checks: config, Codex route, service, Responses proxy, tunnel binary, tunnel key, tunnel service, tunnel runtime.
+Command: `bun run doctor --json`
 
-Pending checks:
+Actual result: exit 1 after approximately 112 seconds with `spawnSync /home/ubuntu/.codex-chatgpt-web/bin/tunnel-client ETIMEDOUT`.
+
+A direct retry of `tunnel-client runtimes cleanup --json` completed successfully in 0.47 s and reported the `codex-chatgpt-web` runtime `ready`. This proves the timeout was transient, but it does not replace a complete exit-zero idle doctor report.
+
+The earlier passing checks for config, Codex route, service, Responses proxy, tunnel binary, tunnel key, tunnel service, and tunnel runtime are historical and do not override this newer failure.
+
+Still pending after the timeout is resolved:
 
 - `browser-host`: cannot verify the embedded ChatGPT session while that browser is running the current Codex turn.
 - `connector`: local checks cannot prove that `Codex Native2` is attached to the ready tunnel.
 
-This result does not satisfy the idle-state browser/session check required by `docs/release-validation.md`.
+This result does not satisfy runtime readiness or the idle-state browser/session check required by `docs/release-validation.md`. A redacted Activity log for the timeout and a later exit-zero idle doctor report are required.
 
 ## Linux interactive release gate
 
@@ -47,6 +56,9 @@ This result does not satisfy the idle-state browser/session check required by `d
 Current evidence state:
 
 - Packaging smoke: PASS.
+- Candidate-bound deterministic verification: PASS for `016243a28973b234ce32c64bbe620f32061d753f`.
+- Candidate-bound AppImage packaging/provenance: NOT RECORDED; the current artifact was built from `920ffd9`.
+- Idle doctor: NOT PASSED because the latest run ended with `tunnel-client ETIMEDOUT`.
 - A Full-mode local-tool turn is proven by the current Codex Native2 session.
 - Items 2–7 are not all recorded as executed against this candidate.
 - Browser automation inventory currently exposes an in-app browser surface with no tab, so the remaining authenticated/manual flows cannot be completed from this turn.
@@ -56,6 +68,6 @@ Current evidence state:
 
 `WAITING_FOR_EVIDENCE`
 
-Resume when the current Codex turn is idle and an authenticated embedded launcher browser is available. Then rerun `bun run doctor --json` and execute/record Linux release-validation items 2–7, including the account plan and any redacted failure Activity log required by `docs/release-validation.md`.
+First resolve and record the `tunnel-client ETIMEDOUT`, rebuild/package the AppImage from `016243a28973b234ce32c64bbe620f32061d753f` (or a later explicitly reviewed candidate), and regenerate candidate-bound packaging evidence. Then, when the current Codex turn is idle and an authenticated embedded launcher browser is available, rerun `bun run doctor --json` and execute/record Linux release-validation items 2–7, including the account plan and any redacted failure Activity log required by `docs/release-validation.md`.
 
 Do not mark stable release acceptance complete until every required Linux item is recorded for this candidate.
