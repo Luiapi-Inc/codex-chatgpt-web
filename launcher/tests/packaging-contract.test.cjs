@@ -204,7 +204,8 @@ test("Linux package smoke launches through the shipped AppImage runner fallback"
   assert.match(smoke, /APPIMAGE_EXTRACT_AND_RUN = "1"/);
   assert.match(smoke, /env\.XDG_RUNTIME_DIR = scratch/);
   assert.match(smoke, /launchStdio = "inherit"/);
-  assert.match(smoke, /run\(command, args, \{ env, stdio: launchStdio \}\)/);
+  assert.match(smoke, /launchTimeout = 120_000/);
+  assert.match(smoke, /run\(command, args, \{ env, stdio: launchStdio, timeout: launchTimeout \}\)/);
 });
 
 test("Linux packaging replaces libnotify in an owned AppImage toolset before assembly", () => {

@@ -82,6 +82,7 @@ try {
   let command;
   let args;
   let launchStdio;
+  let launchTimeout;
   const env = smokeEnvironment();
 
   if (process.platform === "darwin") {
@@ -104,6 +105,7 @@ try {
     args = ["-a", runner, executable, "--launcher-smoke-test"];
     env.APPIMAGE_EXTRACT_AND_RUN = "1";
     launchStdio = "inherit";
+    launchTimeout = 120_000;
   } else if (process.platform === "win32") {
     const installer = artifact(/-win-x64\.exe$/, "Windows installer");
     run(installer, ["/S", "/currentuser"], { timeout: 120_000 });
@@ -115,7 +117,7 @@ try {
   }
 
   if (!fs.existsSync(executable)) throw new Error(`Packaged launcher executable is missing: ${executable}`);
-  run(command, args, { env, stdio: launchStdio });
+  run(command, args, { env, stdio: launchStdio, timeout: launchTimeout });
   if (!fs.existsSync(markerPath)) throw new Error("Packaged launcher did not write its readiness marker");
   const marker = JSON.parse(fs.readFileSync(markerPath, "utf8"));
   if (marker.ok !== true
