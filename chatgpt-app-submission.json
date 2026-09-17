@@ -1,0 +1,176 @@
+{
+  "$schema": "https://developers.openai.com/apps-sdk/schemas/chatgpt-app-submission.v1.json",
+  "schema_version": 1,
+  "app_info": {
+    "display_name": "ChatGPT Web for Codex",
+    "subtitle": "Run Codex tools via ChatGPT Web",
+    "description": "ChatGPT Web for Codex routes a task-bound Codex request through a user-authenticated ChatGPT Web session and exposes the current Codex harness for commands, patches, images, tool discovery, and tool calls.",
+    "category": "DEVELOPER_TOOLS"
+  },
+  "tools": {
+    "codex_turn_start": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Starts or confirms a task-bound Codex turn capability in the local bridge without deleting or overwriting user data.",
+        "open_world_justification": "Operates within the local Codex bridge and does not directly write public internet state.",
+        "destructive_justification": "The operation is idempotent and does not delete, overwrite, revoke, or publish data."
+      }
+    },
+    "codex_turn_complete": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Completes a task-bound Codex turn and returns its final answer without deleting or overwriting user data.",
+        "open_world_justification": "Sends completion state only to the connected local Codex bridge.",
+        "destructive_justification": "The operation is idempotent and does not delete, overwrite, revoke, or publish data."
+      }
+    },
+    "codex_exec": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Runs an arbitrary command in the current Codex environment, which may read or change local files and processes.",
+        "open_world_justification": "The delegated command may access external systems or the public internet according to the connected Codex environment.",
+        "destructive_justification": "An arbitrary command can overwrite files, delete data, or perform other irreversible actions; the outer Codex harness owns approvals."
+      }
+    },
+    "codex_write_stdin": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Writes input to a running command session, which may change local or external state through that process.",
+        "open_world_justification": "The running process may access external systems or the public internet according to the connected Codex environment.",
+        "destructive_justification": "Input to an active command can trigger file changes, deletion, publication, or other irreversible actions; the outer Codex harness owns approvals."
+      }
+    },
+    "codex_apply_patch": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": false,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Applies a file patch in the connected Codex workspace and therefore changes local repository state.",
+        "open_world_justification": "The operation targets the connected Codex workspace and does not directly write public internet state.",
+        "destructive_justification": "A patch can overwrite or remove file content; the outer Codex harness owns approval and review of the change."
+      }
+    },
+    "codex_view_image": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Reads and returns an image from the connected Codex workspace without modifying it.",
+        "open_world_justification": "The operation is limited to the connected Codex workspace and does not write public or third-party state.",
+        "destructive_justification": "The operation only observes an image and cannot delete, overwrite, revoke, or publish data."
+      }
+    },
+    "codex_tool_inventory": {
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false,
+        "destructiveHint": false
+      },
+      "justifications": {
+        "read_only_justification": "Lists tools and their schemas from the current Codex harness without changing workspace state.",
+        "open_world_justification": "The inventory describes the connected Codex harness and does not write public or third-party state.",
+        "destructive_justification": "The operation only discovers tool metadata and cannot delete, overwrite, revoke, or publish data."
+      }
+    },
+    "codex_tool_call": {
+      "annotations": {
+        "readOnlyHint": false,
+        "openWorldHint": true,
+        "destructiveHint": true
+      },
+      "justifications": {
+        "read_only_justification": "Calls an arbitrary tool from the current Codex harness, which may read data or change local and external state.",
+        "open_world_justification": "The selected delegated tool may access external systems or public internet state according to its own contract.",
+        "destructive_justification": "An arbitrary delegated tool may delete, overwrite, publish, send, or otherwise perform irreversible actions; the outer Codex harness owns approvals."
+      }
+    }
+  },
+  "test_cases": [
+    {
+      "description": "Start a task-bound Codex turn.",
+      "user_prompt": "Connect this request to the Codex harness using request ID req_demo.",
+      "file_attachment_urls": null,
+      "tools_triggered": "codex_turn_start",
+      "expected_output": "Confirms the task-bound turn is started or reports an idempotent duplicate.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Inspect the available Codex tools.",
+      "user_prompt": "List the tools available in the current Codex harness.",
+      "file_attachment_urls": null,
+      "tools_triggered": "codex_tool_inventory",
+      "expected_output": "Returns a bounded page of available tools, descriptions, and optionally their schemas.",
+      "expected_output_url": null
+    },
+    {
+      "description": "View a workspace image through the native harness.",
+      "user_prompt": "Show the image at /workspace/example.png.",
+      "file_attachment_urls": null,
+      "tools_triggered": "codex_view_image",
+      "expected_output": "Returns the image result from the connected Codex workspace.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Apply an explicitly requested patch.",
+      "user_prompt": "Apply this approved patch to the current Codex workspace: *** Begin Patch\n*** End Patch",
+      "file_attachment_urls": null,
+      "tools_triggered": "codex_apply_patch",
+      "expected_output": "Reports the native patch result or a clear validation error.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Complete a task-bound Codex turn.",
+      "user_prompt": "Return the completed answer for request ID req_demo.",
+      "file_attachment_urls": null,
+      "tools_triggered": "codex_turn_complete",
+      "expected_output": "Confirms completion or reports an idempotent duplicate.",
+      "expected_output_url": null
+    }
+  ],
+  "negative_test_cases": [
+    {
+      "description": "Do not invoke the app for unrelated general knowledge.",
+      "user_prompt": "What is the capital of France?",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "The app should not be invoked because the request does not require the Codex harness.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Reject a tool call without an exact discovered wire name.",
+      "user_prompt": "Call an unknown tool named arbitrary_action without first discovering it.",
+      "file_attachment_urls": null,
+      "tools_triggered": "codex_tool_call",
+      "expected_output": "Rejects the request because the tool is not available in the current turn registry.",
+      "expected_output_url": null
+    },
+    {
+      "description": "Do not invoke a workspace mutation for a request that only asks for advice.",
+      "user_prompt": "Explain how to apply a patch, but do not change any files.",
+      "file_attachment_urls": null,
+      "tools_triggered": null,
+      "expected_output": "Provides an explanation without invoking a mutating Codex tool.",
+      "expected_output_url": null
+    }
+  ]
+}
