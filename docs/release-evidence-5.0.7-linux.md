@@ -37,22 +37,17 @@ Install path: upgrade/redeploy evidence is present because `5.0.6-linux-x64` and
 
 ## Doctor
 
-Latest result during an active Codex turn on 2026-09-16: failed before a structured report was returned.
+Latest idle-state result on 2026-09-17T07:08:44+07:00: PASS (`ok: true`).
 
 Command: `bun run doctor --json`
 
-Actual result: exit 1 after approximately 112 seconds with `spawnSync /home/ubuntu/.codex-chatgpt-web/bin/tunnel-client ETIMEDOUT`.
+Passing checks: configuration, authenticated embedded browser host (pid 53670), Codex model route, launcher-owned service, Responses proxy on `127.0.0.1:17841`, pinned tunnel binary, private tunnel key, launcher-owned tunnel service, and healthy/ready tunnel runtime.
 
-A direct retry of `tunnel-client runtimes cleanup --json` completed successfully in 0.47 s and reported the `codex-chatgpt-web` runtime `ready`. This proves the timeout was transient, but it does not replace a complete exit-zero idle doctor report.
+The only reported warning was expected: local checks cannot prove that the ChatGPT connector `Codex Native2` is attached to the ready tunnel. That attachment remains part of interactive item 5 rather than an idle doctor failure.
 
-The earlier passing checks for config, Codex route, service, Responses proxy, tunnel binary, tunnel key, tunnel service, and tunnel runtime are historical and do not override this newer failure.
+Independent `release-gate-agent` review: PASS for the idle doctor sub-gate; overall Linux acceptance remains `WAITING_FOR_EVIDENCE` for account-bound items 2–7.
 
-Still pending after the timeout is resolved:
-
-- `browser-host`: cannot verify the embedded ChatGPT session while that browser is running the current Codex turn.
-- `connector`: local checks cannot prove that `Codex Native2` is attached to the ready tunnel.
-
-This result does not satisfy runtime readiness or the idle-state browser/session check required by `docs/release-validation.md`. A redacted Activity log for the timeout and a later exit-zero idle doctor report are required.
+Historical failure evidence: an active-turn run on 2026-09-16 exited 1 after approximately 112 seconds with `spawnSync /home/ubuntu/.codex-chatgpt-web/bin/tunnel-client ETIMEDOUT`. A direct retry completed in 0.47 s and reported the runtime ready. The later complete idle-state PASS confirms that timeout was transient.
 
 ## Linux interactive release gate
 
@@ -63,16 +58,16 @@ Current evidence state:
 - Candidate-bound packaging and packaged-launcher smoke: PASS.
 - Candidate-bound deterministic verification: PASS for `016243a28973b234ce32c64bbe620f32061d753f`.
 - Candidate-bound AppImage packaging/provenance: PASS for `016243a28973b234ce32c64bbe620f32061d753f` with SHA-256 `a0a1cd758ac6195632515e86e32e852d7267513119800bf34a3b4bd89e08d5e4`.
-- Idle doctor: NOT PASSED because the latest run ended with `tunnel-client ETIMEDOUT`.
+- Idle doctor: PASS on 2026-09-17T07:08:44+07:00 with `ok: true`; the connector attachment warning is assigned to interactive item 5.
 - A Full-mode local-tool turn is proven by the current Codex Native2 session.
 - Items 2–7 are not all recorded as executed against this candidate.
-- Browser automation inventory currently exposes an in-app browser surface with no tab, so the remaining authenticated/manual flows cannot be completed from this turn.
+- Browser automation inventory currently exposes no app or browser surfaces, so the remaining authenticated/manual flows cannot be completed from this turn.
 - ChatGPT plan has not been recorded from account-bound release evidence in this candidate artifact.
 
 ## Acceptance state
 
 `WAITING_FOR_EVIDENCE`
 
-When the current Codex turn is idle and an authenticated embedded launcher browser is available, rerun `bun run doctor --json` and execute/record Linux release-validation items 2–7, including the account plan and any redacted failure Activity log required by `docs/release-validation.md`.
+Resume when an authenticated embedded launcher browser is exposed to the available UI automation surface, or when a maintainer can perform the account-bound flow directly. Execute and record Linux release-validation items 2–7, including the ChatGPT account plan and any redacted failure Activity log required by `docs/release-validation.md`.
 
 Do not mark stable release acceptance complete until every required Linux item is recorded for this candidate.
