@@ -14,6 +14,7 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
   const recoveryCallbacks: unknown[] = [];
   const actions: string[] = [];
   const sendBudgets: number[] = [];
+  const submissionLifecycle: string[] = [];
   let stage = "";
   let released = false;
   const page = { evaluate: async () => ({}), isClosed: () => false };
@@ -43,6 +44,9 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
       // Context ingestion cannot mistake tool activity for acknowledgement of a part.
       expect(args[4]).toBe(stage === "send" ? progress : undefined);
       expect(args[5]).toBeDefined();
+      const lifecycle = args[5] as { onSendActivated?: () => void | Promise<void>; onSubmitted?: () => void };
+      await lifecycle.onSendActivated?.();
+      lifecycle.onSubmitted?.();
       recoveryCallbacks.push(args[7]);
       actions.push("send");
       return "user_turn";
@@ -64,6 +68,8 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
       capabilities,
       compaction: !tools,
       externalProgress: progress,
+      onSendActivated: () => { submissionLifecycle.push(`${stage}:activated`); },
+      onSubmitted: () => { submissionLifecycle.push(`${stage}:submitted`); },
       completionFence: tools ? {
         begin: async () => { throw new Error("fixture must stop before completion"); },
         commit: async () => { throw new Error("fixture must stop before completion"); },
@@ -83,6 +89,13 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
       tools ? "attach:tools" : "attach:plain", "files", "send", "observe",
     ]);
     expect(sendBudgets).toEqual(multipart ? [180_000, 180_000, 180_000] : [20_000]);
+    expect(submissionLifecycle).toEqual(multipart
+      ? [
+        "multipart_stage_1_send:activated", "multipart_stage_1_send:submitted",
+        "multipart_stage_2_send:activated", "multipart_stage_2_send:submitted",
+        "send:activated", "send:submitted",
+      ]
+      : ["send:activated", "send:submitted"]);
     expect(released).toBe(true);
   } finally {
     rmSync(diagnostics, { recursive: true, force: true });
