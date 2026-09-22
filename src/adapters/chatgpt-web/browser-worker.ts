@@ -4676,7 +4676,7 @@ export class ChatGptBrowserWorker {
               checkpoint => diagnostics.capture(page, `multipart-${index + 1}-${checkpoint}`),
               turn.abortSignal ? AbortSignal.any([stageSignal, turn.abortSignal]) : stageSignal,
               undefined,
-              undefined,
+              turn,
               undefined,
               launcherObservationRecovery
                 ? async (...args) => {

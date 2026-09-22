@@ -42,7 +42,7 @@ test.each([[true, false, true], [false, false, true], [true, true, true], [true,
     sendAttachedPrompt: async (...args: unknown[]) => {
       // Context ingestion cannot mistake tool activity for acknowledgement of a part.
       expect(args[4]).toBe(stage === "send" ? progress : undefined);
-      if (stage !== "send") expect(args[5]).toBeUndefined();
+      expect(args[5]).toBeDefined();
       recoveryCallbacks.push(args[7]);
       actions.push("send");
       return "user_turn";
