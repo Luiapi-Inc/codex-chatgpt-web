@@ -109,6 +109,8 @@ export interface AppConfig {
   zeroRiskProEnabled: boolean;
   /** Optional adapter-silence budget for the Responses watchdog. */
   stallTimeoutSec?: number;
+  /** Optional pause before each automatic ChatGPT submission. */
+  browserSendDelayMs?: number;
   autoApproveToolCalls: boolean;
   controlToken: string;
   runtimeCommand: string[];
@@ -523,6 +525,12 @@ function parseConfig(value: unknown, path: string): AppConfig {
     && (!Number.isFinite(parsed.stallTimeoutSec) || parsed.stallTimeoutSec <= 0)) {
     throw new Error(`Invalid stallTimeoutSec in ${path}`);
   }
+  if (parsed.browserSendDelayMs !== undefined
+    && (!Number.isSafeInteger(parsed.browserSendDelayMs)
+      || parsed.browserSendDelayMs < 0
+      || parsed.browserSendDelayMs > 15_000)) {
+    throw new Error(`Invalid browserSendDelayMs in ${path}`);
+  }
   const solAvailable = parsed.solAvailable !== false;
   const proAvailable = parsed.proAvailable === true;
   if (parsed.experimentalSkillAttachments !== undefined && typeof parsed.experimentalSkillAttachments !== "boolean") {
@@ -611,6 +619,7 @@ export function providerConfig(config: AppConfig): CodexProviderConfig {
       experimentalBiggerContext: manual ? false : config.experimentalBiggerContext,
       experimentalSkillAttachments: manual ? false : config.experimentalSkillAttachments,
       ...(config.stallTimeoutSec !== undefined ? { stallTimeoutSec: config.stallTimeoutSec } : {}),
+      ...(config.browserSendDelayMs !== undefined ? { browserSendDelayMs: config.browserSendDelayMs } : {}),
       autoApproveToolCalls: manual ? false : config.autoApproveToolCalls,
     },
   };

@@ -1173,6 +1173,27 @@ function withBrowserTurnAbort<T>(promise: Promise<T>, signal?: AbortSignal): Pro
   });
 }
 
+async function waitForBrowserSendPacing(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (delayMs <= 0) return;
+  if (!signal) {
+    await new Promise<void>(resolveWait => setTimeout(resolveWait, delayMs));
+    return;
+  }
+  if (signal.aborted) throw new DOMException("ChatGPT web turn aborted", "AbortError");
+  await new Promise<void>((resolveWait, rejectWait) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolveWait();
+    }, delayMs);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      rejectWait(new DOMException("ChatGPT web turn aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 export interface BrowserTurn {
   traceId: string;
   modelId: string;
@@ -1264,6 +1285,7 @@ export interface ResolvedBrowserConfig {
   storageStatePath: string;
   chromeExecutablePath: string;
   turnTimeoutMs?: number;
+  browserSendDelayMs: number;
   headed: boolean;
   autoApproveToolCalls: boolean;
 }
@@ -1982,6 +2004,7 @@ export function resolveBrowserConfig(provider: CodexProviderConfig): ResolvedBro
     configured.browserDiagnosticsPath?.trim() || join(getConfigDir(), "diagnostics", "browser-turns"),
   ));
   const turnTimeoutMs = configured.turnTimeoutMs;
+  const browserSendDelayMs = configured.browserSendDelayMs ?? 0;
   if (browserHost === "launcher" && !browserHostDescriptorPath) {
     throw new Error("Launcher browser host requires chatgptWeb.browserHostDescriptorPath");
   }
@@ -1998,6 +2021,9 @@ export function resolveBrowserConfig(provider: CodexProviderConfig): ResolvedBro
     && (!Number.isFinite(turnTimeoutMs) || turnTimeoutMs <= 0)) {
     throw new Error("ChatGPT Web turnTimeoutMs must be a positive finite number");
   }
+  if (!Number.isSafeInteger(browserSendDelayMs) || browserSendDelayMs < 0 || browserSendDelayMs > 15_000) {
+    throw new Error("ChatGPT Web browserSendDelayMs must be an integer from 0 to 15000");
+  }
   if (isLegacyChatGptConnectorName(appName)) {
     throw new Error(legacyChatGptConnectorMigrationMessage(appName));
   }
@@ -2010,6 +2036,7 @@ export function resolveBrowserConfig(provider: CodexProviderConfig): ResolvedBro
     storageStatePath: resolve(expandUserPath(configured.storageStatePath?.trim() || join(getConfigDir(), "browser", "storage-state.json"))),
     chromeExecutablePath: resolve(expandUserPath(configured.chromeExecutablePath?.trim() || defaultChromeExecutable())),
     ...(turnTimeoutMs !== undefined ? { turnTimeoutMs } : {}),
+    browserSendDelayMs,
     headed: configured.headed !== false,
     autoApproveToolCalls: configured.autoApproveToolCalls === true,
   };
@@ -3427,6 +3454,9 @@ export class ChatGptBrowserWorker {
       await settleChatGptUi();
     }
     await captureDiagnostic?.("send-ready");
+    await waitForBrowserSendPacing(this.config.browserSendDelayMs, abortSignal);
+    await throwIfChatGptSessionFailureAlert(page);
+    await throwIfChatGptRateLimitDialog(page);
     const initialToolBatchRevision = externalProgress?.snapshot().lastToolBatchRevision ?? 0;
     await submissionLifecycle?.onSendActivated?.();
     await sendButton.press("Enter", {

@@ -187,6 +187,7 @@ async function run(message: RunMessage): Promise<void> {
       browserHostDescriptorPath: message.config.browserHostDescriptorPath,
       browserDiagnosticsPath: message.config.browserDiagnosticsPath,
       turnTimeoutMs: message.config.turnTimeoutMs,
+      browserSendDelayMs: message.config.browserSendDelayMs,
       autoApproveToolCalls: message.config.autoApproveToolCalls,
     },
   };

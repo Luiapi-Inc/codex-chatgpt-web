@@ -293,6 +293,8 @@ export interface CodexProviderConfig {
      * genuinely unresponsive upstream for longer. Defaults to DEFAULT_STALL_TIMEOUT_SEC.
      */
     stallTimeoutSec?: number;
+    /** Optional pause before each automatic ChatGPT submission. */
+    browserSendDelayMs?: number;
     /** Keep the single controlled browser visible. */
     headed?: boolean;
     /** Attach the turn-bound Codex MCP capability for every connector-capable Web model. */

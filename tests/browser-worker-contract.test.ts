@@ -279,10 +279,18 @@ test("browser turns have no absolute deadline unless one is explicitly configure
     ...provider,
     chatgptWeb: { turnTimeoutMs: 123_000 },
   }).turnTimeoutMs).toBe(123_000);
+  expect(resolveBrowserConfig({
+    ...provider,
+    chatgptWeb: { browserSendDelayMs: 5_000 },
+  }).browserSendDelayMs).toBe(5_000);
   expect(() => resolveBrowserConfig({
     ...provider,
     chatgptWeb: { turnTimeoutMs: 0 },
   })).toThrow("turnTimeoutMs must be a positive finite number");
+  expect(() => resolveBrowserConfig({
+    ...provider,
+    chatgptWeb: { browserSendDelayMs: -1 },
+  })).toThrow("browserSendDelayMs must be an integer from 0 to 15000");
 });
 
 test("managed Chrome defaults follow the host platform", () => {
