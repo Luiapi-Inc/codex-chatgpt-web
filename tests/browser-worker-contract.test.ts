@@ -300,8 +300,13 @@ test("browser configuration rejects the retired connector identity before openin
   expect(() => resolveBrowserConfig({
     adapter: "chatgpt-web",
     baseUrl: "browser://chatgpt",
+    chatgptWeb: { appName: "Codex Native2" },
+  })).toThrow(/requires a newly created connector named "Native2".*do not rename or refresh/s);
+  expect(() => resolveBrowserConfig({
+    adapter: "chatgpt-web",
+    baseUrl: "browser://chatgpt",
     chatgptWeb: { appName: "Codex Native" },
-  })).toThrow(/requires a newly created connector named "Codex Native2".*do not rename or refresh/s);
+  })).toThrow(/requires a newly created connector named "Native2".*do not rename or refresh/s);
 });
 
 test("connector verification reports a legacy-only ChatGPT menu as a migration error", async () => {
@@ -314,16 +319,23 @@ test("connector verification reports a legacy-only ChatGPT menu as a migration e
   }, {}, 4);
 
   expect(message).toContain('Legacy ChatGPT connector "Codex Native" was found');
-  expect(message).toContain('newly created connector named "Codex Native2"');
+  expect(message).toContain('newly created connector named "Native2"');
   expect(message).toContain('do not rename or refresh "Codex Native"');
   expect(message).not.toContain("Another connector");
 
+  const previousCurrentMessage = await connectorMentionFailure.call({
+    config: { appName: CHATGPT_CONNECTOR_NAME },
+    connectorMentionRowTitles: async () => ["Codex Native2"],
+  }, {}, 4);
+  expect(previousCurrentMessage).toContain('Legacy ChatGPT connector "Codex Native2" was found');
+  expect(previousCurrentMessage).toContain('newly created connector named "Native2"');
+
   const mixedMessage = await connectorMentionFailure.call({
     config: { appName: CHATGPT_CONNECTOR_NAME },
-    connectorMentionRowTitles: async () => ["Codex Native", "Codex Native2", "Private chat title"],
+    connectorMentionRowTitles: async () => ["Codex Native", "Native2", "Private chat title"],
   }, {}, 4);
   expect(mixedMessage).not.toContain("Legacy ChatGPT connector");
-  expect(mixedMessage).toContain('no row named "Codex Native2"');
+  expect(mixedMessage).toContain('no row named "Native2"');
   expect(mixedMessage).not.toContain("Private chat title");
 });
 
@@ -1248,7 +1260,7 @@ test("connector selection re-resolves the active composer after ChatGPT replaces
       expect(selector).toBe('[data-id^="plugin:"][data-keyword]');
       return {
         filter: (options: { hasText: string; visible: boolean }) => {
-          expect(options).toEqual({ hasText: "Codex Native2", visible: true });
+          expect(options).toEqual({ hasText: "Native2", visible: true });
           return selectedConnector;
         },
       };
@@ -1270,7 +1282,7 @@ test("connector selection re-resolves the active composer after ChatGPT replaces
   const page = {
     getByRole: personalizedTemporaryChatRole,
     getByText: (text: string, options: { exact: boolean }) => {
-      expect(text).toBe("Codex Native2");
+      expect(text).toBe("Native2");
       expect(options).toEqual({ exact: true });
       return { exactConnectorLabel: true };
     },
@@ -1293,7 +1305,7 @@ test("connector selection re-resolves the active composer after ChatGPT replaces
 
   let activeComposerCalls = 0;
   const resolved = await selectConnector.call({
-    config: { appName: "Codex Native2" },
+    config: { appName: "Native2" },
     connectorIsSelected: async () => connectorSelected,
     selectedConnectorControl: () => selectedConnector,
     activeComposer: async () => {
@@ -1308,7 +1320,7 @@ test("connector selection re-resolves the active composer after ChatGPT replaces
     ["fill", ""],
     ["fill", ""],
     ["focus"],
-    ["pressSequentially", "@codex"],
+    ["pressSequentially", "@Native2"],
     ["waitForResult"],
     ["press"],
     ["waitForSelectedConnector"],
@@ -1352,7 +1364,7 @@ test("connector selection moves highlight to the exact hidden-viewport row befor
   }).selectConnector;
 
   await expect(selectConnector.call({
-    config: { appName: "Codex Native2 DEV" },
+    config: { appName: "Native2 DEV" },
     connectorIsSelected: async () => selected,
     selectedConnectorControl: () => selectedConnector,
     activeComposer: async () => selected ? selectedComposer : initialComposer,
@@ -1376,7 +1388,7 @@ test("repeated connector verification reuses its selected pill before clearing t
   }).selectConnector;
 
   await expect(selectConnector.call({
-    config: { appName: "Codex Native2 DEV" },
+    config: { appName: "Native2 DEV" },
     activeComposer: async () => selectedComposer,
     connectorIsSelected: async () => true,
   }, page, async checkpoint => { checkpoints.push(checkpoint); })).resolves.toBe(selectedComposer);
@@ -1414,7 +1426,7 @@ test("connector selection retriggers the complete mention after a fresh-page hyd
     fill: async () => { calls.push("clear"); },
     focus: async (_options?: { signal?: AbortSignal }) => { calls.push("focus"); },
     pressSequentially: async (value: string) => {
-      expect(value).toBe("@codex");
+      expect(value).toBe("@Native2");
       calls.push("type");
     },
     press: async (key: string) => {
@@ -1436,7 +1448,7 @@ test("connector selection retriggers the complete mention after a fresh-page hyd
 
   let activeComposerCalls = 0;
   await selectConnector.call({
-    config: { appName: "Codex Native2" },
+    config: { appName: "Native2" },
     connectorIsSelected: async () => selected,
     connectorMentionRowTitles: async () => [],
     selectedConnectorControl: () => selectedConnector,
@@ -1478,7 +1490,7 @@ test("connector verification preserves the host-refreshed catalog evidence", asy
     getAttribute: async (name: string) => name === "data-highlighted" ? "" : null,
   };
   const visibleRows = {
-    allInnerTexts: async () => catalogFresh ? ["Codex Native2"] : ["Another connector"],
+    allInnerTexts: async () => catalogFresh ? ["Native2"] : ["Another connector"],
   };
   const menuRows = {
     filter: (options: { has?: unknown; visible?: boolean }) => options.visible ? visibleRows : appResult,
@@ -1525,7 +1537,7 @@ test("connector verification preserves the host-refreshed catalog evidence", asy
   };
   let prepared = 0;
   const fixture = {
-    config: { appName: "Codex Native2", browserDiagnosticsPath: diagnosticsRoot },
+    config: { appName: "Native2", browserDiagnosticsPath: diagnosticsRoot },
     ensurePage: async () => page,
     prepareTemporaryChatSurface: async () => {
       prepared += 1;
@@ -1543,7 +1555,7 @@ test("connector verification preserves the host-refreshed catalog evidence", asy
   Date.now = () => now;
   try {
     await expect(prototype.verifyConnectorExclusive.call(fixture)).rejects.toThrow(
-      'connector menu opened but exposed no row named "Codex Native2"',
+      'connector menu opened but exposed no row named "Native2"',
     );
     expect(prepared).toBe(1);
     expect(calls.filter(call => call === "reload")).toEqual([]);
@@ -1585,7 +1597,7 @@ for (const captureScreenshots of [false, true]) test(`connector failure persists
 
   try {
     await expect(verifyConnectorExclusive.call({
-      config: { appName: "Codex Native2", browserDiagnosticsPath: diagnosticsRoot },
+      config: { appName: "Native2", browserDiagnosticsPath: diagnosticsRoot },
       ensurePage: async () => page,
       prepareTemporaryChatSurface: async (_page: unknown, capture: (checkpoint: string) => Promise<void>) => {
         await capture("composer-ready");
@@ -1640,7 +1652,7 @@ test("successful connector verification clears the proven selection before relea
 
   try {
     const result = await verifyConnectorExclusive.call({
-      config: { appName: "Codex Native2 DEV", browserDiagnosticsPath: diagnosticsRoot },
+      config: { appName: "Native2 DEV", browserDiagnosticsPath: diagnosticsRoot },
       ensurePage: async () => page,
       prepareTemporaryChatSurface: async (_page: unknown, capture: (checkpoint: string) => Promise<void>) => {
         calls.push("prepare");
@@ -1653,7 +1665,7 @@ test("successful connector verification clears the proven selection before relea
       clearChatGptComposerState: async () => { calls.push("clear"); },
     }, "verify_success_contract");
 
-    expect(result).toBe("Codex Native2 DEV");
+    expect(result).toBe("Native2 DEV");
     expect(calls).toEqual(["prepare", "select", "clear"]);
     const [traceDirectory] = readdirSync(diagnosticsRoot);
     const checkpoints = readdirSync(join(diagnosticsRoot, traceDirectory!))
@@ -1832,7 +1844,7 @@ test("tool-capable prompts use the shared Playwright connector selection before 
 
   let activeComposerCalls = 0;
   await attachPrompt.call({
-    config: { appName: "Codex Native2" },
+    config: { appName: "Native2" },
     selectConnector,
     insertPromptText,
     connectorIsSelected: async () => selected,
@@ -1848,7 +1860,7 @@ test("tool-capable prompts use the shared Playwright connector selection before 
     ["fill", ""],
     ["fill", ""],
     ["focus"],
-    ["type", "@codex"],
+    ["type", "@Native2"],
     ["connectorMenu"],
     ["selectConnector"],
     ["selectedConnector"],
@@ -1913,7 +1925,7 @@ test("an aborted connector proof clears its mention before the preflight release
   };
 
   const selection = prototype.selectConnector.call({
-    config: { appName: "Codex Native2" },
+    config: { appName: "Native2" },
     activeComposer: async (_page: unknown, _timeout: number, signal?: AbortSignal) => {
       expect(signal).toBeDefined();
       return composer;
@@ -2019,7 +2031,7 @@ test("an aborted real connector selection clears the typed mention before return
   };
 
   const selection = prototype.selectConnector.call({
-    config: { appName: "Codex Native2" },
+    config: { appName: "Native2" },
     activeComposer: async () => composer,
     connectorIsSelected: async () => false,
     clearChatGptComposerState: prototype.clearChatGptComposerState,
@@ -2036,7 +2048,7 @@ test("an aborted real connector selection clears the typed mention before return
 });
 
 test("connector cleanup uses native editor deletion when contenteditable fill would retain the mention", async () => {
-  let composerText = "@codex";
+  let composerText = "@Native2";
   let selectedAll = false;
   let fillCalls = 0;
   const pressed: string[] = [];
@@ -2343,13 +2355,13 @@ function thinkSlashFixture() {
 
 test("Think slash toggles only when needed, preserves connectors, and normal Luna clears it", async () => {
   const { state, composerForm } = thinkSlashFixture();
-  state.connectors = ["Codex Native2"];
+  state.connectors = ["Native2"];
   const checkpoints: string[] = [];
 
   await setChatGptThinkMode(composerForm as never, true, async checkpoint => { checkpoints.push(checkpoint); });
   expect(state.pressed).toBeTrue();
   expect(state.commands).toEqual(["/think"]);
-  expect(state.connectors).toEqual(["Codex Native2"]);
+  expect(state.connectors).toEqual(["Native2"]);
   await setChatGptThinkMode(composerForm as never, true);
   expect(state.commands).toEqual(["/think"]);
   await setChatGptThinkMode(composerForm as never, false, async checkpoint => { checkpoints.push(checkpoint); });
@@ -2383,14 +2395,14 @@ test("Think attachment runs after fresh connector selection and rechecks retaine
     const submitted: boolean[] = [];
     const worker = {
       activeComposer: async () => ui.composer,
-      selectConnector: async () => { connectorSelections += 1; ui.state.connectors = ["Codex Native2"]; return ui.composer; },
+      selectConnector: async () => { connectorSelections += 1; ui.state.connectors = ["Native2"]; return ui.composer; },
       insertPromptText: async () => { submitted.push(ui.state.pressed); },
       assertPromptAttached: async () => {}, clearChatGptComposerState: async () => { ui.state.draft = ""; ui.state.connectors = []; },
     };
     await attach.call(worker, ui.page, "requested task", localTools, undefined, undefined, false, undefined, retained, true);
     expect(submitted).toEqual([true]);
     expect(connectorSelections).toBe(localTools && !retained ? 1 : 0);
-    if (localTools && !retained) expect(ui.state.connectors).toEqual(["Codex Native2"]);
+    if (localTools && !retained) expect(ui.state.connectors).toEqual(["Native2"]);
     if (retained) {
       ui.state.pressed = false;
       await attach.call(worker, ui.page, "follow-up task", localTools, undefined, undefined, false, undefined, retained, true);
@@ -2407,7 +2419,7 @@ test("Think attachment rolls back a lost connector and never inserts the prompt"
   let insertions = 0;
   let cleanup = 0;
   const worker = {
-    selectConnector: async () => { ui.state.connectors = ["Codex Native2"]; return ui.composer; },
+    selectConnector: async () => { ui.state.connectors = ["Native2"]; return ui.composer; },
     insertPromptText: async () => { insertions += 1; },
     clearChatGptComposerState: async () => { cleanup += 1; ui.state.draft = ""; ui.state.connectors = []; },
   };

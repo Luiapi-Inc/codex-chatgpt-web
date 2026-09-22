@@ -19,13 +19,30 @@ export type SubagentProtocol = "compatibility-v1" | "native";
  * ChatGPT caches a connector's public MCP contract by connector identity. The direct turn-token
  * contract therefore has a new identity instead of mutating the retired connector in place.
  */
-export const CHATGPT_CONNECTOR_NAME = "Codex Native2";
+export const CHATGPT_CONNECTOR_NAME = "Native2";
 export const DEV_CHATGPT_CONNECTOR_NAME = `${CHATGPT_CONNECTOR_NAME} DEV`;
 export const ZERO_RISK_CHATGPT_CONNECTOR_NAME = "Codex Zero Risk";
-export const LEGACY_CHATGPT_CONNECTOR_NAMES = ["Codex Native"] as const;
+export const LEGACY_CHATGPT_CONNECTOR_NAMES = ["Codex Native2", "Codex Native"] as const;
 
 export function isLegacyChatGptConnectorName(value: string): boolean {
   return (LEGACY_CHATGPT_CONNECTOR_NAMES as readonly string[]).includes(value);
+}
+
+export function validateAutomaticChatGptConnectorName(value: string): string {
+  const connectorName = value.trim();
+  if (!connectorName || connectorName.length > 76) {
+    throw new Error("Automatic connector name must be 1-76 characters");
+  }
+  if (connectorName === ZERO_RISK_CHATGPT_CONNECTOR_NAME) {
+    throw new Error(`${JSON.stringify(ZERO_RISK_CHATGPT_CONNECTOR_NAME)} is reserved for Zero Risk`);
+  }
+  if (isLegacyChatGptConnectorName(connectorName)) {
+    throw new Error(`Connector name ${JSON.stringify(connectorName)} is reserved as a legacy identity`);
+  }
+  if (connectorName.endsWith(" DEV")) {
+    throw new Error('Automatic connector name must not end with " DEV" because that suffix is reserved for the DEV profile');
+  }
+  return connectorName;
 }
 
 export function legacyChatGptConnectorMigrationMessage(legacyName: string): string {
@@ -44,8 +61,10 @@ export interface InteractionConnectorIdentities {
 export function resolveInteractionConnectorIdentities(
   interactionMode: BrowserInteractionMode,
   profile: "production" | "development" = "production",
+  connectorName: string = CHATGPT_CONNECTOR_NAME,
 ): InteractionConnectorIdentities {
-  const automaticAppName = profile === "development" ? DEV_CHATGPT_CONNECTOR_NAME : CHATGPT_CONNECTOR_NAME;
+  const automaticBaseName = validateAutomaticChatGptConnectorName(connectorName);
+  const automaticAppName = profile === "development" ? `${automaticBaseName} DEV` : automaticBaseName;
   return {
     appName: interactionMode === "manual" ? ZERO_RISK_CHATGPT_CONNECTOR_NAME : automaticAppName,
     automaticAppName,

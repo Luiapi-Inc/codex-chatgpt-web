@@ -96,10 +96,11 @@ Zero Risk 不读取或操作 ChatGPT 页面。请自行选择模型和 `Codex Ze
    和普通 API 密钥；创建密钥本身免费，也不会消耗模型 API 额度。
 3. 粘贴 Tunnel ID 和 API 密钥，然后点击 **连接 Harness**。
 4. 在 ChatGPT 设置中启用 **开发者模式**。新建连接器时选择 **Tunnel**，选择刚创建的
-   Tunnel，将 **身份验证** 设为 **无**，并将名称准确设置为 **Codex Native2**。
-5. 在 **Codex Native2** 的 **权限** 中选择 **允许所有操作**；**允许低风险操作** 会在命令和
+   Tunnel，将 **身份验证** 设为 **无**，并使用设置中显示的连接器名称（默认是 **Native2**；
+   如果使用 `--connector-name`，则必须使用传入的准确名称）。
+5. 在已配置连接器的 **权限** 中选择 **允许所有操作**；**允许低风险操作** 会在命令和
    补丁到达本地运行时前将其拦截。外层 Codex harness 仍会执行沙箱和审批规则。
-6. 运行 **验证运行时**，确认 **Codex Native2** 已连接并可用。
+6. 运行 **验证运行时**，确认已配置的连接器已连接并可用。
 
 写入/修改操作还需要 ChatGPT 工作区及其管理员政策允许。请参阅
 [开发者模式和 MCP 应用](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)。

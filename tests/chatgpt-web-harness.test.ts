@@ -1230,7 +1230,7 @@ describe("ChatGPT outer-native harness v4", () => {
     }
   });
 
-  test("caps automatic rate-limit browser sends at three retries for one native turn", async () => {
+  test("caps automatic pre-submit rate-limit browser attempts at three retries for one native turn", async () => {
     const socketPath = brokerTestEndpoint(`cgw-h4-retry-budget-${process.pid}-${Date.now()}`);
     const provider: CodexProviderConfig = {
       adapter: "chatgpt-web",
@@ -1240,9 +1240,8 @@ describe("ChatGPT outer-native harness v4", () => {
     const worker = ChatGptBrowserWorker.forProvider(provider);
     const originalRun = worker.run.bind(worker);
     let browserStarts = 0;
-    (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = async turn => {
+    (worker as unknown as { run: () => Promise<string> }).run = async () => {
       browserStarts += 1;
-      turn.onSendActivated?.();
       throw new ChatGptWebAdapterError("ChatGPT rate limit: too many requests. Try again in a few minutes.", {
         status: 429,
         errorType: "rate_limit_error",
@@ -1262,12 +1261,93 @@ describe("ChatGPT outer-native harness v4", () => {
         expect(error).toMatchObject({ type: "error", code: "rate_limit_exceeded" });
         expect((error as Extract<AdapterEvent, { type: "error" }>).retryable)
           .toBe(attempt < MAX_CHATGPT_WEB_TURN_RETRIES);
-        if (attempt === MAX_CHATGPT_WEB_TURN_RETRIES) {
-          expect((error as Extract<AdapterEvent, { type: "error" }>).message)
-            .toContain("Try again in a few minutes.");
-        }
       }
       expect(browserStarts).toBe(MAX_CHATGPT_WEB_TURN_RETRIES + 1);
+    } finally {
+      (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = originalRun;
+      await TurnBroker.forSocket(socketPath).close();
+    }
+  });
+
+  test("never replays a retryable browser error after Send activation", async () => {
+    const socketPath = brokerTestEndpoint(`cgw-h4-post-send-retry-fence-${process.pid}-${Date.now()}`);
+    const provider: CodexProviderConfig = {
+      adapter: "chatgpt-web",
+      baseUrl: `browser://chatgpt-post-send-retry-fence-${Date.now()}`,
+      chatgptWeb: { brokerSocketPath: socketPath, localToolsEnabled: false, solAvailable: true, extraHighAvailable: true, proAvailable: true },
+    };
+    const worker = ChatGptBrowserWorker.forProvider(provider);
+    const originalRun = worker.run.bind(worker);
+    let browserStarts = 0;
+    (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = async turn => {
+      browserStarts += 1;
+      turn.onSendActivated?.();
+      throw new ChatGptWebAdapterError("ChatGPT rate limit appeared after Enter.", {
+        status: 429,
+        errorType: "rate_limit_error",
+        code: "rate_limit_exceeded",
+        retryable: true,
+      });
+    };
+    try {
+      const request = rawWireRequest(environmentXml);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const events: AdapterEvent[] = [];
+        await createChatGptWebAdapter(provider).runTurn!(
+          request,
+          { headers: new Headers() },
+          event => events.push(event),
+        );
+        expect(events.at(-1)).toMatchObject({
+          type: "error",
+          code: "chatgpt_submission_ambiguous",
+          retryable: false,
+        });
+      }
+      expect(browserStarts).toBe(1);
+    } finally {
+      (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = originalRun;
+      await TurnBroker.forSocket(socketPath).close();
+    }
+  });
+
+  test("never replays a retryable browser error after submission acceptance", async () => {
+    const socketPath = brokerTestEndpoint(`cgw-h4-post-accept-retry-fence-${process.pid}-${Date.now()}`);
+    const provider: CodexProviderConfig = {
+      adapter: "chatgpt-web",
+      baseUrl: `browser://chatgpt-post-accept-retry-fence-${Date.now()}`,
+      chatgptWeb: { brokerSocketPath: socketPath, localToolsEnabled: false, solAvailable: true, extraHighAvailable: true, proAvailable: true },
+    };
+    const worker = ChatGptBrowserWorker.forProvider(provider);
+    const originalRun = worker.run.bind(worker);
+    let browserStarts = 0;
+    (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = async turn => {
+      browserStarts += 1;
+      turn.onSendActivated?.();
+      turn.onSubmitted?.();
+      throw new ChatGptWebAdapterError("ChatGPT rate limit appeared after submission acceptance.", {
+        status: 429,
+        errorType: "rate_limit_error",
+        code: "rate_limit_exceeded",
+        retryable: true,
+      });
+    };
+    try {
+      const request = rawWireRequest(environmentXml);
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const events: AdapterEvent[] = [];
+        await createChatGptWebAdapter(provider).runTurn!(
+          request,
+          { headers: new Headers() },
+          event => events.push(event),
+        );
+        expect(events.at(-1)).toMatchObject({
+          type: "error",
+          code: "chatgpt_submitted_turn_failed",
+          retryable: false,
+        });
+      }
+      expect(browserStarts).toBe(1);
     } finally {
       (worker as unknown as { run: (turn: BrowserTurn) => Promise<string> }).run = originalRun;
       await TurnBroker.forSocket(socketPath).close();

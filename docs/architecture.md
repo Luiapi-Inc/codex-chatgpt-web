@@ -52,9 +52,9 @@ DEV launchers can therefore run at the same time with different ChatGPT accounts
 
 The working-tree adapter attaches to a tab leased only from that DEV launcher. In Full mode the DEV
 launcher owns one persistent, isolated tunnel runtime; a named CLI chat owns only the private turn
-broker attached to that tunnel for the command's lifetime. The distinct `Codex Native2 DEV`
+broker attached to that tunnel for the command's lifetime. The distinct `Native2 DEV`
 connector reaches the same MCP server and turn-token contract without requiring any Responses
-daemon or colliding with the production `Codex Native2` connector.
+daemon or colliding with the production `Native2` connector.
 
 Only the responsibilities normally owned by native Codex are synthetic: named history storage,
 turn metadata, tool-result execution, context-threshold scheduling, and installation of compacted
@@ -71,12 +71,12 @@ state, thread authority, checkpoints, and named chat state live
 under `~/.codex-chatgpt-web-dev` by default.
 
 The ChatGPT connector name is also the public MCP ABI identity. The direct turn-token contract uses
-`Codex Native2`; the retired `Codex Native` identity is never selected or refreshed in place. Setup
+`Native2`; the previous `Codex Native2` and retired `Codex Native` identities are never selected or refreshed in place. Setup
 migrates known legacy local configuration to the new name, clears prior verification state, and
 requires the user to create the new connector. Browser verification accepts the exact new identity,
 reports a specific migration error when only the legacy identity is visible, and never falls back to
 the legacy connector. Future public schema changes require another explicit connector identity.
-Repository DEV mode uses `Codex Native2 DEV` so the same ChatGPT account can keep both production
+Repository DEV mode uses `Native2 DEV` so the same ChatGPT account can keep both production
 and development connectors installed without renaming, refreshing, or deleting either one.
 
 ## Browser lifecycle

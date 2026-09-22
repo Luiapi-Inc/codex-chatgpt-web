@@ -84,7 +84,7 @@ test("browser control server authenticates and owns turn visibility", async () =
         traceId: "abcdef123456",
         helperPid: process.pid,
         conversationKey: "a".repeat(64),
-        connectorIdentity: "Codex Native2",
+        connectorIdentity: "Native2",
         requireRetainedConversation: true,
       }),
     });
@@ -141,7 +141,7 @@ test("browser control server authenticates and owns turn visibility", async () =
         true,
         process.pid,
         "a".repeat(64),
-        "Codex Native2",
+        "Native2",
         true,
       ],
       ["heartbeat", "abcdef123456", process.pid, true],
@@ -525,7 +525,7 @@ test("browser control server rejects malformed retained-conversation contracts",
   try {
     assert.equal((await post({ conversationKey: "ABC" })).status, 400);
     assert.equal((await post({ requireRetainedConversation: true })).status, 400);
-    assert.equal((await post({ connectorIdentity: "Codex Native2" })).status, 400);
+    assert.equal((await post({ connectorIdentity: "Native2" })).status, 400);
   } finally {
     await server.close();
   }

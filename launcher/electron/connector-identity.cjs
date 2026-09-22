@@ -1,6 +1,6 @@
-const CURRENT_CONNECTOR_NAME = "Codex Native2";
+const CURRENT_CONNECTOR_NAME = "Native2";
 const DEV_CONNECTOR_NAME = `${CURRENT_CONNECTOR_NAME} DEV`;
-const LEGACY_CONNECTOR_NAMES = Object.freeze(["Codex Native"]);
+const LEGACY_CONNECTOR_NAMES = Object.freeze(["Codex Native2", "Codex Native"]);
 
 function validateConnectorName(value) {
   if (typeof value !== "string" || !value.trim() || value.length > 80) {
@@ -21,6 +21,10 @@ function connectorNameForSetup(value) {
 function connectorNameForDevSetup(value) {
   if (value === undefined || value === null) return DEV_CONNECTOR_NAME;
   const configured = validateConnectorName(value);
+  if (configured.endsWith(" DEV")) {
+    const baseName = configured.slice(0, -4);
+    if (isLegacyConnectorName(baseName)) return DEV_CONNECTOR_NAME;
+  }
   if (configured === CURRENT_CONNECTOR_NAME || isLegacyConnectorName(configured)) {
     return DEV_CONNECTOR_NAME;
   }

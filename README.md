@@ -96,9 +96,10 @@ The launcher's **MCP** page guides the complete setup. For the exact clicks, see
 
 1. Finish the required setup, open **MCP**, create the Tunnel and regular API key, then press
    **Connect harness**.
-2. Enable ChatGPT **Developer Mode** and create a new Tunnel connector named exactly
-   **Codex Native2**, with **Authentication: None** and **Allow all actions**.
-3. Run **Verify runtime** to confirm that **Codex Native2** is attached and available.
+2. Enable ChatGPT **Developer Mode** and create a new Tunnel connector using the connector name
+   shown by setup (**Native2** by default, or the exact value passed with `--connector-name`), with
+   **Authentication: None** and **Allow all actions**.
+3. Run **Verify runtime** to confirm that the configured connector is attached and available.
 
 Write/modify actions also require the ChatGPT workspace and its administrator policy to permit
 them. See

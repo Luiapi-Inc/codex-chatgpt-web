@@ -296,9 +296,12 @@ function replayEvents(events: AdapterEvent[], emit: (event: AdapterEvent) => voi
 
 function submittedTurnFailure(session: ChatGptTurnSession, error: unknown): Error {
   const normalized = error instanceof Error ? error : new Error(String(error));
-  if (normalized instanceof ChatGptWebAdapterError) return normalized;
   const phase = session.runtime.submission?.phase;
   if (!phase || phase === "prepared") return normalized;
+  // Once Send is activated, replaying a retryable browser error can duplicate a prompt whose
+  // submission outcome is already irreversible or ambiguous. Preserve deterministic terminal
+  // ChatGPT errors, but fence every retryable failure behind a non-retryable submission verdict.
+  if (normalized instanceof ChatGptWebAdapterError && !normalized.retryable) return normalized;
   const ambiguous = phase === "send_activated";
   return new ChatGptWebAdapterError(
     ambiguous

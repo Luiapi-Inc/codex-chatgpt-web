@@ -923,7 +923,14 @@ class RuntimeHost {
   }
 
   setupConnectorName() {
-    return this.launcherProfile === "development" ? DEV_CONNECTOR_NAME : CURRENT_CONNECTOR_NAME;
+    const current = this.runtimeConfigSnapshot();
+    const configuredAutomaticName = current.config?.automaticAppName ?? current.config?.appName;
+    if (this.launcherProfile === "development") {
+      return connectorNameForDevSetup(configuredAutomaticName);
+    }
+    return configuredAutomaticName
+      ? connectorNameForSetup(configuredAutomaticName)
+      : CURRENT_CONNECTOR_NAME;
   }
 
   cancelActiveTurns() {
@@ -1163,9 +1170,12 @@ class RuntimeHost {
     if (this.currentOperation()) throw new Error(`Another launcher operation is active: ${this.currentOperation()}`);
     const existing = this.runtimeConfigSnapshot();
     const currentVersion = this.app.getVersion();
-    const connectorMigrationRequired = existing.mode === "full"
-      && isLegacyConnectorName(validateConnectorName(existing.config?.appName));
     const interactionMode = existing.config?.browserInteractionMode ?? "automatic";
+    const configuredAutomaticName = existing.config?.automaticAppName
+      ?? (interactionMode === "automatic" ? existing.config?.appName : undefined);
+    const connectorMigrationRequired = existing.mode === "full"
+      && configuredAutomaticName !== undefined
+      && isLegacyConnectorName(validateConnectorName(configuredAutomaticName));
     const expectedTunnelProfile = interactionMode === "manual"
       ? "codex-chatgpt-web-zero-risk"
       : "codex-chatgpt-web";

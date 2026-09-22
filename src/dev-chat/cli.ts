@@ -342,6 +342,7 @@ export async function runDevCommand(args: string[]): Promise<void> {
     if (browserOnly === full) throw new Error("Choose exactly one DEV setup mode: --browser-only or --full");
     const tunnelId = takeOption(args, "--tunnel-id");
     const runtimeKeyFile = takeOption(args, "--runtime-key-file");
+    const connectorName = takeOption(args, "--connector-name");
     const descriptorPath = takeOption(args, "--browser-host-descriptor") ?? paths.descriptorPath;
     const acknowledgedUnofficial = takeFlag(args, "--acknowledge-unofficial");
     const refreshAccountCapabilities = takeFlag(args, "--refresh-account-capabilities");
@@ -364,6 +365,7 @@ export async function runDevCommand(args: string[]): Promise<void> {
       browserHostDescriptorPath: descriptorPath,
       refreshAccountCapabilities,
       acknowledgedUnofficial,
+      ...(connectorName !== undefined ? { connectorName } : {}),
       ...(automaticBrowserInteraction || manualBrowserInteraction
         ? { browserInteractionMode: manualBrowserInteraction ? "manual" : "automatic" }
         : {}),

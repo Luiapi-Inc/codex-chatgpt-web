@@ -26,7 +26,7 @@ async function runCli(args: string[], env: Record<string, string | undefined>) {
   return { exitCode, stdout, stderr };
 }
 
-test("production and DEV setup reject the removed connector-name option before configuration", async () => {
+test("production and DEV setup reject removed --app-name while exposing --connector-name", async () => {
   const root = mkdtempSync(join(tmpdir(), "codex-chatgpt-web-fixed-connector-"));
   try {
     const env = {
@@ -46,6 +46,7 @@ test("production and DEV setup reject the removed connector-name option before c
     expect(existsSync(join(root, "dev", "config.json"))).toBeFalse();
     const help = await runCli(["--help"], env);
     expect(help.stdout).not.toContain("--app-name");
+    expect(help.stdout).toContain("--connector-name NAME");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -335,7 +336,7 @@ test("DEV browser-only setup persists only the isolated harness profile", async 
       version: 3,
       purpose: "dev-harness",
       mode: "browser-only",
-      appName: "Codex Native2 DEV",
+      appName: "Native2 DEV",
       browserHost: "launcher",
       browserHostDescriptorPath: descriptorPath,
       solAvailable: true,

@@ -104,7 +104,7 @@ test("default setup uses the fixed production connector identities", () => {
 test.each([
   ["production", CHATGPT_CONNECTOR_NAME],
   ["development", DEV_CHATGPT_CONNECTOR_NAME],
-] as const)("%s setup preserves its fixed automatic identity across Zero Risk", (profile, automaticAppName) => {
+] as const)("%s setup preserves its default automatic identity across Zero Risk", (profile, automaticAppName) => {
   expect(resolveInteractionConnectorIdentities("manual", profile)).toEqual({
     appName: ZERO_RISK_CHATGPT_CONNECTOR_NAME,
     automaticAppName,
@@ -115,6 +115,21 @@ test.each([
     automaticAppName,
     manualAppName: ZERO_RISK_CHATGPT_CONNECTOR_NAME,
   });
+});
+
+test("automatic connector identity can be configured while DEV remains isolated", () => {
+  expect(resolveInteractionConnectorIdentities("automatic", "production", "Hermes MCP App")).toEqual({
+    appName: "Hermes MCP App",
+    automaticAppName: "Hermes MCP App",
+    manualAppName: ZERO_RISK_CHATGPT_CONNECTOR_NAME,
+  });
+  expect(resolveInteractionConnectorIdentities("automatic", "development", "Hermes MCP App")).toEqual({
+    appName: "Hermes MCP App DEV",
+    automaticAppName: "Hermes MCP App DEV",
+    manualAppName: ZERO_RISK_CHATGPT_CONNECTOR_NAME,
+  });
+  expect(() => resolveInteractionConnectorIdentities("automatic", "production", "Codex Native2")).toThrow("reserved as a legacy identity");
+  expect(() => resolveInteractionConnectorIdentities("automatic", "production", "Codex Zero Risk")).toThrow("reserved for Zero Risk");
 });
 
 test("setup repairs a legacy automatic connector name that collides with Zero Risk", () => {

@@ -97,9 +97,10 @@ inbound 포트를 열거나 라우터 포트 포워딩을 설정할 필요가 �
 
 1. 필수 설정을 완료하고 **MCP**를 연 다음 Tunnel과 일반 API 키를 생성하고
    **하네스 연결**을 누릅니다.
-2. ChatGPT **Developer Mode**를 활성화하고, **Tunnel** 방식의 새 커넥터를 만들고 이름을 정확히
-   **Codex Native2**로 지정합니다. **Authentication: None**과 **Allow all actions**를 사용합니다.
-3. **런타임 검증**을 실행해 **Codex Native2**가 연결되어 사용 가능한지 확인합니다.
+2. ChatGPT **Developer Mode**를 활성화하고, **Tunnel** 방식의 새 커넥터를 만든 뒤 설정에 표시된
+   커넥터 이름(기본값은 **Native2**, `--connector-name`을 사용했다면 전달한 정확한 값)을 사용합니다.
+   **Authentication: None**과 **Allow all actions**를 사용합니다.
+3. **런타임 검증**을 실행해 설정된 커넥터가 연결되어 사용 가능한지 확인합니다.
 
 쓰기/수정 작업은 ChatGPT 작업 공간과 관리자 정책에서도 허용되어야 합니다.
 [Developer Mode와 MCP 앱](https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt)을

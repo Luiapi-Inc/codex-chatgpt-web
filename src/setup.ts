@@ -4,11 +4,13 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import type { AppConfig, BrowserInteractionMode, RuntimeMode, SubagentProtocol } from "./config";
 import {
+  CHATGPT_CONNECTOR_NAME,
   currentRuntimeCommand,
   defaultBrokerEndpoint,
   defaultConfig,
   getConfigPath,
   loadConfigForSetup,
+  isLegacyChatGptConnectorName,
   resolveInteractionConnectorIdentities,
   saveConfig,
   tunnelConfigForInteractionMode,
@@ -45,6 +47,7 @@ import { VERSION } from "./version";
 export interface SetupOptions {
   mode: RuntimeMode;
   browserInteractionMode?: BrowserInteractionMode;
+  connectorName?: string;
   subagentProtocol?: SubagentProtocol;
   port?: number;
   chromeExecutablePath?: string;
@@ -249,9 +252,20 @@ function baseConfig(
   const config = existing ? structuredClone(existing) : defaultConfig(options.mode);
   config.mode = options.mode;
   if (options.browserInteractionMode) config.browserInteractionMode = options.browserInteractionMode;
+  const existingAutomaticName = existing?.automaticAppName
+    ?? (existing?.browserInteractionMode === "automatic" ? existing.appName : undefined);
+  const existingBaseName = profile === "development" && existingAutomaticName?.endsWith(" DEV")
+    ? existingAutomaticName.slice(0, -4)
+    : existingAutomaticName;
+  const connectorName = options.connectorName
+    ?? (existingBaseName && !isLegacyChatGptConnectorName(existingBaseName)
+      ? existingBaseName
+      : undefined)
+    ?? CHATGPT_CONNECTOR_NAME;
   Object.assign(config, resolveInteractionConnectorIdentities(
     config.browserInteractionMode,
     profile,
+    connectorName,
   ));
   if (options.subagentProtocol) config.subagentProtocol = options.subagentProtocol;
   config.releaseVersion = VERSION;
