@@ -19,6 +19,7 @@ interface RunMessage {
     browserHostDescriptorPath: string;
     browserDiagnosticsPath?: string;
     turnTimeoutMs: number;
+    browserSendDelayMs: number;
     autoApproveToolCalls: boolean;
   };
   turn: {

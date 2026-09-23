@@ -12,6 +12,7 @@ import {
   inspectLauncherBrowserHostLiveness,
   readLauncherBrowserHostDescriptor,
 } from "./launcher-browser-host";
+import { inspectCodexIabBrowserHost } from "./codex-iab-browser-host";
 import {
   activateCodexIntegration,
   deactivateCodexIntegration,
@@ -25,7 +26,7 @@ import { runChatGptMcpMain } from "./adapters/chatgpt-web/mcp-main";
 import { runCommand } from "./process";
 import { startServer } from "./server";
 import { assertServiceIdle, cancelActiveTurns, getServiceStatus, installService, interruptActiveTurn, restartService, startService, stopService, uninstallService } from "./service";
-import { existingFullSetupCredentials, preflightSetup, setup, type SetupOptions } from "./setup";
+import { existingFullSetupCredentials, isRuntimeOwnedBrowserHost, preflightSetup, setup, type SetupOptions } from "./setup";
 import { installRuntimeKeyBytes, managedRuntimeKeyPath, stopTunnel, tunnelStatus, waitForTunnelReady } from "./tunnel";
 import { getTunnelServiceStatus, restartTunnelService, startTunnelService, stopTunnelService, uninstallTunnelService } from "./tunnel-service";
 import { VERSION } from "./version";
@@ -67,8 +68,9 @@ Setup options:
   --port NUMBER                Loopback Responses port (default: 17841)
   --connector-name NAME        Automatic-mode connector identity (default: Native2)
   --chrome PATH                Google Chrome/Chromium executable used for account login
+  --browser-host MODE          managed-chrome, launcher, or codex-iab
   --browser-host-descriptor PATH
-                               Use the embedded launcher browser described by this owner-only file
+                               Owner-only descriptor for launcher or Codex IAB mode
   --refresh-account-capabilities
                                Re-read the authenticated account's available Web models
   --tunnel-id ID               Existing OpenAI tunnel id (full mode)
@@ -232,6 +234,9 @@ async function loginCommand(args: string[]): Promise<void> {
     if (config.browserHost === "launcher") {
       throw new Error("ChatGPT login is owned by the launcher; open Codex Web GPT and use its Sign in step");
     }
+    if (config.browserHost === "codex-iab") {
+      throw new Error("ChatGPT login is owned by Codex Desktop; use the existing Codex In-app Browser session");
+    }
     const result = await loginToChatGpt(config);
     stdout.write(`ChatGPT login stored at ${result.storageStatePath}\n`);
     return;
@@ -294,8 +299,15 @@ async function setupCommand(args: string[]): Promise<void> {
   const tunnelId = takeOption(args, "--tunnel-id");
   const runtimeKeyFile = takeOption(args, "--runtime-key-file");
   const chrome = takeOption(args, "--chrome");
+  const browserHost = takeOption(args, "--browser-host");
   const browserHostDescriptorPath = takeOption(args, "--browser-host-descriptor");
   if (chrome) options.chromeExecutablePath = chrome;
+  if (browserHost !== undefined) {
+    if (browserHost !== "managed-chrome" && browserHost !== "launcher" && browserHost !== "codex-iab") {
+      throw new Error("--browser-host must be managed-chrome, launcher, or codex-iab");
+    }
+    options.browserHost = browserHost;
+  }
   if (browserHostDescriptorPath) options.browserHostDescriptorPath = browserHostDescriptorPath;
   options.refreshAccountCapabilities = takeFlag(args, "--refresh-account-capabilities");
   if (tunnelId) options.tunnelId = tunnelId;
@@ -525,9 +537,9 @@ async function uninstallCommand(args: string[]): Promise<void> {
     throw new Error("Uninstall cancelled");
   }
   const config = existsSync(getConfigPath()) ? loadConfig() : undefined;
-  if (config?.browserHost === "launcher" && !launcherControl) {
+  if (config && isRuntimeOwnedBrowserHost(config.browserHost) && !launcherControl) {
     throw new Error(
-      "Launcher-owned integration must be removed from Codex Web GPT Settings so the active runtime can be drained safely.",
+      "Runtime-owned browser integration must be removed from its owning runtime settings so the active runtime can be drained safely.",
     );
   }
   if (!config && process.platform === "darwin" && getServiceStatus().installed) {
@@ -580,6 +592,9 @@ async function main(): Promise<void> {
         await inspectLauncherBrowserHost(config.browserHostDescriptorPath!);
         stdout.write("Playwright can reach the authenticated ChatGPT surface embedded in the launcher.\n");
       }
+    } else if (config.browserHost === "codex-iab") {
+      await inspectCodexIabBrowserHost(config.browserHostDescriptorPath!);
+      stdout.write("Playwright can reach the authenticated ChatGPT surface embedded in Codex Desktop.\n");
     } else {
       await checkBrowserEngine(config);
       stdout.write("Playwright can launch the configured Chrome executable.\n");

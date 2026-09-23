@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from 
 import { join, resolve } from "node:path";
 import { skillFileTokens, validateSkillFiles } from "./skill-attachments";
 import { chromium, type Browser, type BrowserContext, type Locator, type Page } from "playwright-core";
+import { connectCodexIabBrowserHost } from "../../codex-iab-browser-host";
 import {
   atomicWriteFile,
   CHATGPT_CONNECTOR_NAME,
@@ -1278,7 +1279,7 @@ interface ChatGptSubmissionDomCache {
 
 export interface ResolvedBrowserConfig {
   appName: string;
-  browserHost: "managed-chrome" | "launcher";
+  browserHost: "managed-chrome" | "launcher" | "codex-iab";
   browserHostDescriptorPath?: string;
   browserHelperScriptPath?: string;
   browserDiagnosticsPath?: string;
@@ -2005,8 +2006,8 @@ export function resolveBrowserConfig(provider: CodexProviderConfig): ResolvedBro
   ));
   const turnTimeoutMs = configured.turnTimeoutMs;
   const browserSendDelayMs = configured.browserSendDelayMs ?? 0;
-  if (browserHost === "launcher" && !browserHostDescriptorPath) {
-    throw new Error("Launcher browser host requires chatgptWeb.browserHostDescriptorPath");
+  if ((browserHost === "launcher" || browserHost === "codex-iab") && !browserHostDescriptorPath) {
+    throw new Error(`${browserHost === "launcher" ? "Launcher" : "Codex IAB"} browser host requires chatgptWeb.browserHostDescriptorPath`);
   }
   if (browserHelperScriptPath && browserHost !== "launcher") {
     throw new Error("Explicit browser helper script requires a launcher host");
@@ -2209,6 +2210,9 @@ export class ChatGptBrowserWorker {
     if (this.activeRuns.has(turn.traceId)) {
       return Promise.reject(new Error(`Duplicate ChatGPT web browser turn: ${turn.traceId}`));
     }
+    if (this.config.browserHost === "codex-iab" && this.activeRuns.size >= 1) {
+      return Promise.reject(new Error("Codex IAB browser host supports one active browser turn because it attaches to one existing Codex-owned ChatGPT tab"));
+    }
     if (this.activeRuns.size >= MAX_CHATGPT_BROWSER_TABS) {
       return Promise.reject(new Error(
         `ChatGPT Web supports at most ${MAX_CHATGPT_BROWSER_TABS} simultaneous browser turns; close or finish a browser tab before starting another`,
@@ -2342,6 +2346,13 @@ export class ChatGptBrowserWorker {
       this.page = connection.page;
       return this.page;
     }
+    if (this.config.browserHost === "codex-iab") {
+      const connection = await connectCodexIabBrowserHost(this.config.browserHostDescriptorPath!);
+      this.browser = connection.browser;
+      this.context = connection.context;
+      this.page = connection.page;
+      return this.page;
+    }
     if (!existsSync(this.config.storageStatePath) || !existsSync(loginVerificationMarkerPath(this.config.storageStatePath))) {
       throw new Error(`ChatGPT web login state is missing: ${this.config.storageStatePath}`);
     }
@@ -2392,6 +2403,9 @@ export class ChatGptBrowserWorker {
   private async pageForNewTurn(): Promise<Page> {
     if (this.config.browserHost === "launcher") {
       throw new Error("Launcher turns require an explicitly leased browser surface");
+    }
+    if (this.config.browserHost === "codex-iab") {
+      return await this.ensurePage();
     }
     const { context } = await this.ensureManagedBrowser();
     return await context.newPage();
@@ -4486,6 +4500,20 @@ export class ChatGptBrowserWorker {
       let page = await this.runStage(turn.traceId, "browser_page", browserStageTimeouts.browserPage, async (abortSignal) => {
         if (maintenancePage) return maintenancePage;
         if (!launcherSurfaceId) {
+          if (this.config.browserHost === "codex-iab") {
+            const connection = await connectCodexIabBrowserHost(
+              this.config.browserHostDescriptorPath!,
+              browserStageTimeouts.browserPage,
+              abortSignal,
+            );
+            if (abortSignal.aborted) {
+              await connection.browser.close().catch(() => {});
+              throw new DOMException("ChatGPT browser page acquisition aborted", "AbortError");
+            }
+            turnConnection = connection.browser;
+            await waitForOperationalChatGptViewport(connection.page, abortSignal);
+            return connection.page;
+          }
           const managed = await this.pageForNewTurn();
           if (abortSignal.aborted) {
             await managed.close().catch(() => {});
@@ -4507,7 +4535,7 @@ export class ChatGptBrowserWorker {
         await waitForOperationalChatGptViewport(connection.page, abortSignal);
         return connection.page;
       });
-      if (!maintenancePage && !launcherSurfaceId) managedPage = page;
+      if (!maintenancePage && !launcherSurfaceId && this.config.browserHost === "managed-chrome") managedPage = page;
       diagnosticPage = page;
       const rebindLauncherPage = async (
         attempt: number,

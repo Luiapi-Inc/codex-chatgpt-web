@@ -12,7 +12,9 @@ import {
   inspectLauncherBrowserHostLiveness,
   readLauncherBrowserHostDescriptor,
 } from "./launcher-browser-host";
+import { inspectCodexIabBrowserHost } from "./codex-iab-browser-host";
 import { processRunning } from "./process";
+import { isRuntimeOwnedBrowserHost } from "./setup";
 
 export type CheckStatus = "ok" | "warning" | "error";
 
@@ -59,6 +61,26 @@ function launcherOwnershipError(config: AppConfig, health: Record<string, unknow
     return `Responses proxy pid ${String(health.pid)} does not match launcher-owned pid ${String(state.daemonPid)}`;
   }
   return undefined;
+}
+
+function runtimeOwnerName(browserHost: AppConfig["browserHost"]): string {
+  return browserHost === "codex-iab" ? "Codex Desktop" : "Launcher";
+}
+
+export function runtimeOwnedServiceCheck(
+  id: string,
+  service: { installed: boolean; loaded: boolean },
+  ownerName: string,
+  legacyMessage: string,
+): DoctorCheck {
+  return service.installed || service.loaded
+    ? {
+        id,
+        status: "warning",
+        message: legacyMessage,
+        detail: JSON.stringify(service),
+      }
+    : { id, status: "ok", message: `${ownerName} owns the ${id === "service" ? "background" : "tunnel"} runtime` };
 }
 
 async function proxyCheck(config: AppConfig): Promise<DoctorCheck> {
@@ -108,7 +130,23 @@ export async function runDoctor(): Promise<DoctorReport> {
     return { ok: false, checks };
   }
 
-  if (config.browserHost === "launcher") {
+  if (config.browserHost === "codex-iab") {
+    try {
+      const inspected = await inspectCodexIabBrowserHost(config.browserHostDescriptorPath!, { timeoutMs: 30_000 });
+      checks.push({
+        id: "browser-host",
+        status: "ok",
+        message: `Codex IAB is reachable and ChatGPT DOM is accessible (title ${inspected.title})`,
+      });
+    } catch (error) {
+      checks.push({
+        id: "browser-host",
+        status: "error",
+        message: "Codex IAB browser host is unavailable",
+        detail: error instanceof Error ? error.message : String(error),
+      });
+    }
+  } else if (config.browserHost === "launcher") {
     try {
       const descriptor = config.browserInteractionMode === "manual"
         ? await inspectLauncherBrowserHostLiveness(config.browserHostDescriptorPath!, { timeoutMs: 5_000 })
@@ -158,15 +196,14 @@ export async function runDoctor(): Promise<DoctorReport> {
   }
 
   const service = getServiceStatus();
-  if (config.browserHost === "launcher") {
-    checks.push(service.installed || service.loaded
-      ? {
-          id: "service",
-          status: "warning",
-          message: "A legacy OS background service still exists; rerun launcher setup to migrate ownership",
-          detail: JSON.stringify(service),
-        }
-      : { id: "service", status: "ok", message: "Launcher owns the background runtime" });
+  if (isRuntimeOwnedBrowserHost(config.browserHost)) {
+    const ownerName = runtimeOwnerName(config.browserHost);
+    checks.push(runtimeOwnedServiceCheck(
+      "service",
+      service,
+      ownerName,
+      `A legacy OS background service still exists; rerun ${ownerName} setup to migrate ownership`,
+    ));
   } else if (!service.supported) {
     checks.push({ id: "service", status: "warning", message: "Managed service is unavailable on this OS; keep `serve` running manually" });
   } else if (!service.installed || !service.loaded) {
@@ -191,15 +228,14 @@ export async function runDoctor(): Promise<DoctorReport> {
       checks.push({ id: "tunnel-key", status: "ok", message: "Tunnel runtime key is stored privately" });
     }
     const tunnelService = getTunnelServiceStatus();
-    if (config.browserHost === "launcher") {
-      checks.push(tunnelService.installed || tunnelService.loaded
-        ? {
-            id: "tunnel-service",
-            status: "warning",
-            message: "A legacy OS tunnel service still exists; rerun launcher MCP setup to migrate ownership",
-            detail: JSON.stringify(tunnelService),
-          }
-        : { id: "tunnel-service", status: "ok", message: "Launcher owns the tunnel runtime" });
+    if (isRuntimeOwnedBrowserHost(config.browserHost)) {
+      const ownerName = runtimeOwnerName(config.browserHost);
+      checks.push(runtimeOwnedServiceCheck(
+        "tunnel-service",
+        tunnelService,
+        ownerName,
+        `A legacy OS tunnel service still exists; rerun ${ownerName} MCP setup to migrate ownership`,
+      ));
     } else {
       checks.push(tunnelService.installed && tunnelService.loaded && tunnelService.running
         ? { id: "tunnel-service", status: "ok", message: "macOS tunnel service is installed, loaded, and running" }

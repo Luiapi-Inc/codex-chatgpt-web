@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import type { AppConfig, BrowserInteractionMode, RuntimeMode, SubagentProtocol } from "./config";
+import type { AppConfig, BrowserHostMode, BrowserInteractionMode, RuntimeMode, SubagentProtocol } from "./config";
 import {
   CHATGPT_CONNECTOR_NAME,
   currentRuntimeCommand,
@@ -47,6 +47,7 @@ import { VERSION } from "./version";
 export interface SetupOptions {
   mode: RuntimeMode;
   browserInteractionMode?: BrowserInteractionMode;
+  browserHost?: BrowserHostMode;
   connectorName?: string;
   subagentProtocol?: SubagentProtocol;
   port?: number;
@@ -79,7 +80,7 @@ export interface SetupResult {
 interface PreparedSetup {
   existing: AppConfig | undefined;
   config: AppConfig;
-  launcherOwned: boolean;
+  runtimeOwnedBrowserHost: boolean;
 }
 
 export interface DevProfileSetupResult {
@@ -106,6 +107,10 @@ export function launcherCapabilityProbeRequired(
     || typeof existing.solAvailable !== "boolean"
     || typeof existing.extraHighAvailable !== "boolean"
     || typeof existing.proAvailable !== "boolean";
+}
+
+export function isRuntimeOwnedBrowserHost(browserHost: BrowserHostMode): boolean {
+  return browserHost === "launcher" || browserHost === "codex-iab";
 }
 
 export function existingFullSetupCredentials(
@@ -276,10 +281,18 @@ function baseConfig(
   }
   if (options.chromeExecutablePath) config.chromeExecutablePath = options.chromeExecutablePath;
   if (options.browserHostDescriptorPath) {
-    config.browserHost = "launcher";
+    if (options.browserHost === "managed-chrome") {
+      throw new Error("managed-chrome does not accept --browser-host-descriptor");
+    }
+    config.browserHost = options.browserHost ?? "launcher";
     config.browserHostDescriptorPath = options.browserHostDescriptorPath;
     config.brokerSocketPath = defaultBrokerEndpoint();
+  } else if (options.browserHost === "launcher" || options.browserHost === "codex-iab") {
+    throw new Error(`${options.browserHost} requires --browser-host-descriptor`);
   } else if (options.chromeExecutablePath) {
+    config.browserHost = "managed-chrome";
+    delete config.browserHostDescriptorPath;
+  } else if (options.browserHost === "managed-chrome") {
     config.browserHost = "managed-chrome";
     delete config.browserHostDescriptorPath;
   }
@@ -444,14 +457,14 @@ function prepareSetup(options: SetupOptions): PreparedSetup {
       ?? readCodexSubagentProtocol(existing?.subagentProtocol ?? "compatibility-v1"),
   });
   delete config.purpose;
-  const launcherOwned = config.browserHost === "launcher";
-  if (!launcherOwned && process.platform !== "darwin") {
+  const runtimeOwnedBrowserHost = isRuntimeOwnedBrowserHost(config.browserHost);
+  if (!runtimeOwnedBrowserHost && process.platform !== "darwin") {
     throw new Error(
       "Terminal-only managed Chrome setup currently requires macOS. "
       + "Use the Codex Web GPT launcher on Windows or Linux.",
     );
   }
-  return { existing, config, launcherOwned };
+  return { existing, config, runtimeOwnedBrowserHost };
 }
 
 export function preflightSetup(options: SetupOptions): void {
@@ -493,21 +506,21 @@ export function preflightSetup(options: SetupOptions): void {
 }
 
 export async function setup(options: SetupOptions): Promise<SetupResult> {
-  const { existing, config, launcherOwned } = prepareSetup(options);
+  const { existing, config, runtimeOwnedBrowserHost } = prepareSetup(options);
   preflightCodexIntegration(config, {
     replaceExistingRoute: options.replaceCodexRoute,
   });
   const refreshTunnelWorker = tunnelWorkerRuntimeChanged(existing, config);
   if (existing && options.restartService) config.controlToken = randomBytes(32).toString("base64url");
   const beforeService = getServiceStatus();
-  if (launcherOwned && (beforeService.installed || beforeService.loaded)) {
+  if (runtimeOwnedBrowserHost && (beforeService.installed || beforeService.loaded)) {
     if (!existing) {
       throw new Error("A legacy background service exists without a verifiable configuration; refusing automatic migration");
     }
     if (!options.restartService) {
       throw new Error(
-        "Launcher ownership migration must stop the legacy background service. "
-        + "Retry from the launcher after the active Codex task finishes.",
+        "Runtime-owned browser migration must stop the legacy background service. "
+        + "Retry from the owning browser runtime after the active Codex task finishes.",
       );
     }
   }
@@ -522,6 +535,15 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
   if (config.browserInteractionMode === "manual") {
     // The generic manual route is independent of account capabilities. The launcher may open the
     // authenticated surface, but setup must not inspect its model selector or infer availability.
+  } else if (config.browserHost === "codex-iab") {
+    if (options.forceLogin) {
+      throw new Error("Codex IAB login is owned by Codex Desktop; --login cannot replace it");
+    }
+    if (options.refreshAccountCapabilities) {
+      throw new Error("Codex IAB account capability refresh is unavailable until the owned tab is bound");
+    }
+    // The authenticated session belongs to Codex Desktop. Preserve previously observed model
+    // capabilities and never fall through to managed-Chrome storage or login handling.
   } else if (config.browserHost === "launcher") {
     if (options.forceLogin) throw new Error("Launcher browser login is owned by the launcher UI; --login cannot replace it");
     const capabilities = await inspectLauncherCapabilities(
@@ -589,7 +611,7 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
   if (changedWhileLoaded && !preliminaryChange && existing) await assertServiceIdle(existing);
   if (!beforeService.loaded) await assertPortAvailable(config.host, config.port);
 
-  if (!launcherOwned) {
+  if (!runtimeOwnedBrowserHost) {
     saveConfig(config);
     installService(config);
     if (changedWhileLoaded && options.restartService && existing) await restartService(existing);
@@ -606,7 +628,7 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
     const profilePath = join(config.tunnel!.profileDir, `${config.tunnel!.profileName}.yaml`);
     const tunnelService = getTunnelServiceStatus();
     const needsProfile = !existsSync(profilePath);
-    if (launcherOwned) {
+    if (runtimeOwnedBrowserHost) {
       if (tunnelService.installed || tunnelService.loaded) await uninstallTunnelService();
       if (needsProfile || refreshTunnelWorker || explicitTunnelChange) {
         await bootstrapTunnelProfile(config);
@@ -627,14 +649,14 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
       tunnelReady = true;
     }
   }
-  if (launcherOwned && (beforeService.installed || beforeService.loaded)) {
+  if (runtimeOwnedBrowserHost && (beforeService.installed || beforeService.loaded)) {
     await uninstallService(existing!);
   }
-  if (launcherOwned) saveConfig(config);
+  if (runtimeOwnedBrowserHost) saveConfig(config);
   // Keep the previous terminal runtime intact through the ownership handoff. A later launcher
   // setup removes it once the launcher-owned configuration is already the established baseline.
   const migratingTerminalRuntime = Boolean(
-    launcherOwned && existing && existing.browserHost !== "launcher",
+    runtimeOwnedBrowserHost && existing && !isRuntimeOwnedBrowserHost(existing.browserHost),
   );
   if (!migratingTerminalRuntime) removeLegacyRuntimeArtifacts(config);
   installCodexIntegration(config, {
@@ -645,7 +667,7 @@ export async function setup(options: SetupOptions): Promise<SetupResult> {
     mode: config.mode,
     configPath: getConfigPath(),
     loginCreated,
-    serviceLoaded: launcherOwned ? false : getServiceStatus().loaded,
+    serviceLoaded: runtimeOwnedBrowserHost ? false : getServiceStatus().loaded,
     tunnelReady,
     codexRestartRequired: true,
     connectorSetupRequired: config.mode === "full",

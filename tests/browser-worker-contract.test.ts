@@ -272,6 +272,37 @@ test("browser turns run concurrently up to the five-tab limit", async () => {
   await Promise.all([...active.slice(1), sixth]);
 });
 
+test("codex-iab browser turns are serialized onto the single owned ChatGPT tab", async () => {
+  const releases = new Map<string, () => void>();
+  const worker = Object.assign(Object.create(ChatGptBrowserWorker.prototype), {
+    config: { browserHost: "codex-iab" },
+    activeRuns: new Map(),
+    runExclusive: (turn: { traceId: string }) => new Promise<string>(resolve => {
+      releases.set(turn.traceId, () => resolve(turn.traceId));
+    }),
+  }) as ChatGptBrowserWorker;
+  const browserTurn = (traceId: string) => ({
+    traceId,
+    modelId: "chatgpt-web/high",
+    capabilities: { localToolsEnabled: false, solAvailable: true, extraHighAvailable: true, proAvailable: true },
+    prepare: async () => ({ text: traceId, images: [], release() {} }),
+    onTextDelta() {},
+  });
+
+  const first = worker.run(browserTurn("iab_trace_1"));
+  await Promise.resolve();
+  expect(releases.has("iab_trace_1")).toBeTrue();
+  await expect(worker.run(browserTurn("iab_trace_2"))).rejects.toThrow("one active browser turn");
+
+  releases.get("iab_trace_1")?.();
+  await first;
+  const second = worker.run(browserTurn("iab_trace_2"));
+  await Promise.resolve();
+  expect(releases.has("iab_trace_2")).toBeTrue();
+  releases.get("iab_trace_2")?.();
+  await second;
+});
+
 test("browser turns have no absolute deadline unless one is explicitly configured", () => {
   const provider = { adapter: "chatgpt-web" as const, baseUrl: "browser://chatgpt" };
   expect(resolveBrowserConfig(provider).turnTimeoutMs).toBeUndefined();
@@ -291,6 +322,32 @@ test("browser turns have no absolute deadline unless one is explicitly configure
     ...provider,
     chatgptWeb: { browserSendDelayMs: -1 },
   })).toThrow("browserSendDelayMs must be an integer from 0 to 15000");
+});
+
+test("codex-iab configuration requires an owned descriptor and rejects launcher helpers", () => {
+  const provider = { adapter: "chatgpt-web" as const, baseUrl: "browser://chatgpt" };
+  expect(() => resolveBrowserConfig({
+    ...provider,
+    chatgptWeb: { browserHost: "codex-iab" },
+  })).toThrow("Codex IAB browser host requires chatgptWeb.browserHostDescriptorPath");
+  expect(() => resolveBrowserConfig({
+    ...provider,
+    chatgptWeb: {
+      browserHost: "codex-iab",
+      browserHostDescriptorPath: "/tmp/codex-iab.json",
+      browserHelperScriptPath: "/tmp/helper.js",
+    },
+  })).toThrow("Explicit browser helper script requires a launcher host");
+  const config = resolveBrowserConfig({
+    ...provider,
+    chatgptWeb: {
+      browserHost: "codex-iab",
+      browserHostDescriptorPath: "/tmp/codex-iab.json",
+    },
+  });
+  expect(config.browserHost).toBe("codex-iab");
+  expect(config.browserHostDescriptorPath).toBe("/tmp/codex-iab.json");
+  expect(config.browserHelperScriptPath).toBeUndefined();
 });
 
 test("managed Chrome defaults follow the host platform", () => {

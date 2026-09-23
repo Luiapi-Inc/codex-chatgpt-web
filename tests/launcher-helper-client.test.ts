@@ -75,6 +75,7 @@ test("daemon streams browser lifecycle through the real helper process", async (
     storageStatePath: join(root, "unused-state.json"),
     chromeExecutablePath: join(root, "unused-chrome"),
     turnTimeoutMs: 60_000,
+    browserSendDelayMs: 0,
     headed: true,
     autoApproveToolCalls: false,
   };
@@ -184,7 +185,7 @@ test("accepted compaction retires through the helper as completed without hiding
     appName: "Native2", browserHost: "launcher", browserHostDescriptorPath: descriptorPath,
     browserHelperScriptPath: helper, browserDiagnosticsPath: join(root, "diagnostics"),
     storageStatePath: join(root, "unused-state.json"), chromeExecutablePath: join(root, "unused-chrome"),
-    turnTimeoutMs: 60_000, headed: true, autoApproveToolCalls: false,
+    turnTimeoutMs: 60_000, browserSendDelayMs: 0, headed: true, autoApproveToolCalls: false,
   });
   const logs: string[] = [];
   const logger = spyOn(console, "info").mockImplementation((...args) => { logs.push(args.join(" ")); });
@@ -235,6 +236,7 @@ test("launcher helper protocol preserves multipart context and the compaction fl
     storageStatePath: "/durable/unused-state.json",
     chromeExecutablePath: "/durable/unused-chrome",
     turnTimeoutMs: 60_000,
+    browserSendDelayMs: 0,
     headed: true,
     autoApproveToolCalls: false,
   });
@@ -311,6 +313,7 @@ test("an abort dispatched during run submission cannot overtake the run frame", 
     storageStatePath: "/durable/unused-state.json",
     chromeExecutablePath: "/durable/unused-chrome",
     turnTimeoutMs: 60_000,
+    browserSendDelayMs: 0,
     headed: true,
     autoApproveToolCalls: false,
   });
@@ -357,6 +360,7 @@ test("structured helper errors preserve the ChatGPT adapter failure contract", a
     storageStatePath: "/durable/unused-state.json",
     chromeExecutablePath: "/durable/unused-chrome",
     turnTimeoutMs: 60_000,
+    browserSendDelayMs: 0,
     headed: true,
     autoApproveToolCalls: false,
   });
@@ -409,7 +413,7 @@ test("structured helper errors preserve the ChatGPT adapter failure contract", a
 test("an older helper cannot silently drop selected skill files and releases the prepared turn", async () => {
   const client = new LauncherBrowserHelperClient({
     appName: "Native2", browserHost: "launcher", browserHostDescriptorPath: "/durable/launcher.json",
-    storageStatePath: "/durable/unused.json", chromeExecutablePath: "/durable/chrome", headed: true, autoApproveToolCalls: false,
+    storageStatePath: "/durable/unused.json", chromeExecutablePath: "/durable/chrome", browserSendDelayMs: 0, headed: true, autoApproveToolCalls: false,
   });
   const internal = client as unknown as {
     child: unknown;

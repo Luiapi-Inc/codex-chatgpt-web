@@ -480,42 +480,78 @@ test("browser check uses metadata-only launcher liveness in Zero Risk", async ()
   }
 });
 
-test("terminal uninstall refuses to race a launcher-owned runtime", async () => {
-  const root = mkdtempSync(join(tmpdir(), "codex-chatgpt-web-cli-uninstall-"));
+test("codex-iab login and browser check use the owned Codex Desktop browser path", async () => {
+  const root = mkdtempSync(join(tmpdir(), "codex-chatgpt-web-cli-iab-"));
   const appHome = join(root, "app");
-  const configPath = join(appHome, "config.json");
-  mkdirSync(appHome, { recursive: true });
-  writeFileSync(configPath, `${JSON.stringify({
-    version: 3,
-    releaseVersion: "0.2.0",
-    mode: "browser-only",
-    host: "127.0.0.1",
-    port: 17841,
-    contextWindow: 256_000,
-    appName: "Codex Native",
-    browserHost: "launcher",
-    browserHostDescriptorPath: join(appHome, "runtime", "launcher-browser.json"),
-    chromeExecutablePath: process.execPath,
-    storageStatePath: join(appHome, "browser", "storage-state.json"),
-    brokerSocketPath: defaultBrokerEndpoint(appHome),
-    headed: true,
-    extraHighAvailable: false, proAvailable: false,
-    autoApproveToolCalls: false,
-    controlToken: "launcher-uninstall-control-token-0123456789abcdef",
-    runtimeCommand: [process.execPath],
-  })}\n`);
+  const descriptorPath = join(appHome, "runtime", "codex-iab.json");
+  mkdirSync(join(appHome, "runtime"), { recursive: true });
+  writeFileSync(join(appHome, "config.json"), `${JSON.stringify({
+    ...defaultConfig("browser-only"),
+    browserHost: "codex-iab",
+    browserHostDescriptorPath: descriptorPath,
+    chromeExecutablePath: join(root, "missing-chrome"),
+  })}\n`, { mode: 0o600 });
   try {
-    const result = await runCli([
-      "uninstall",
-      "--yes",
-    ], {
+    const env = {
       ...process.env,
-      CODEX_HOME: join(root, "codex"),
       CODEX_CHATGPT_WEB_HOME: appHome,
-    });
-    expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("must be removed from Codex Web GPT Settings");
-    expect(existsSync(configPath)).toBe(true);
+      CODEX_HOME: join(root, "codex"),
+    };
+
+    const login = await runCli(["login"], env);
+    expect(login.exitCode).toBe(1);
+    expect(login.stderr).toContain("ChatGPT login is owned by Codex Desktop");
+    expect(login.stderr).not.toContain("missing-chrome");
+
+    const browserCheck = await runCli(["browser", "check"], env);
+    expect(browserCheck.exitCode).toBe(1);
+    expect(browserCheck.stderr).toContain("Codex IAB browser host is unavailable");
+    expect(browserCheck.stderr).toContain(descriptorPath);
+    expect(browserCheck.stderr).not.toContain("missing-chrome");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("terminal uninstall refuses to race a runtime-owned browser host", async () => {
+  const root = mkdtempSync(join(tmpdir(), "codex-chatgpt-web-cli-uninstall-"));
+  try {
+    for (const browserHost of ["launcher", "codex-iab"] as const) {
+      const appHome = join(root, browserHost);
+      const configPath = join(appHome, "config.json");
+      mkdirSync(appHome, { recursive: true });
+      writeFileSync(configPath, `${JSON.stringify({
+        version: 3,
+        releaseVersion: "0.2.0",
+        mode: "browser-only",
+        host: "127.0.0.1",
+        port: 17841,
+        contextWindow: 256_000,
+        appName: "Codex Native",
+        browserHost,
+        browserHostDescriptorPath: join(appHome, "runtime", `${browserHost}.json`),
+        chromeExecutablePath: process.execPath,
+        storageStatePath: join(appHome, "browser", "storage-state.json"),
+        brokerSocketPath: defaultBrokerEndpoint(appHome),
+        headed: true,
+        extraHighAvailable: false, proAvailable: false,
+        autoApproveToolCalls: false,
+        controlToken: "runtime-owned-uninstall-control-token-0123456789abcdef",
+        runtimeCommand: [process.execPath],
+      })}\n`);
+
+      const result = await runCli([
+        "uninstall",
+        "--yes",
+      ], {
+        ...process.env,
+        CODEX_HOME: join(root, `${browserHost}-codex`),
+        CODEX_CHATGPT_WEB_HOME: appHome,
+      });
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Runtime-owned browser integration must be removed");
+      expect(existsSync(configPath)).toBe(true);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

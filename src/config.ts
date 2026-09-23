@@ -11,7 +11,7 @@ import type { CodexProviderConfig } from "./types";
 import { VERSION } from "./version";
 
 export type RuntimeMode = "browser-only" | "full";
-export type BrowserHostMode = "managed-chrome" | "launcher";
+export type BrowserHostMode = "managed-chrome" | "launcher" | "codex-iab";
 export type BrowserInteractionMode = "automatic" | "manual";
 export type SubagentProtocol = "compatibility-v1" | "native";
 
@@ -402,7 +402,7 @@ function parseConfig(value: unknown, path: string): AppConfig {
     throw new Error(`Invalid subagentProtocol in ${path}`);
   }
   if (parsed.host !== "127.0.0.1") throw new Error("The Responses proxy must bind to 127.0.0.1");
-  if (parsed.browserHost !== "managed-chrome" && parsed.browserHost !== "launcher") {
+  if (parsed.browserHost !== "managed-chrome" && parsed.browserHost !== "launcher" && parsed.browserHost !== "codex-iab") {
     throw new Error(`Invalid browserHost in ${path}`);
   }
   const browserInteractionMode = parsed.browserInteractionMode ?? "automatic";
@@ -446,13 +446,13 @@ function parseConfig(value: unknown, path: string): AppConfig {
   if (parsed.appName !== expectedAppName) {
     throw new Error(`Active appName does not match browserInteractionMode in ${path}; rerun setup`);
   }
-  if (parsed.browserHost === "launcher"
+  if ((parsed.browserHost === "launcher" || parsed.browserHost === "codex-iab")
     && (typeof parsed.browserHostDescriptorPath !== "string" || !parsed.browserHostDescriptorPath.trim())) {
-    throw new Error(`Launcher browser host requires browserHostDescriptorPath in ${path}`);
+    throw new Error(`${parsed.browserHost === "launcher" ? "Launcher" : "Codex IAB"} browser host requires browserHostDescriptorPath in ${path}`);
   }
-  if (parsed.browserHost === "launcher"
+  if ((parsed.browserHost === "launcher" || parsed.browserHost === "codex-iab")
     && !isAbsolute(expandUserPath(parsed.browserHostDescriptorPath!))) {
-    throw new Error(`Launcher browserHostDescriptorPath must be absolute in ${path}`);
+    throw new Error(`${parsed.browserHost === "launcher" ? "Launcher" : "Codex IAB"} browserHostDescriptorPath must be absolute in ${path}`);
   }
   const brokerEndpoint = expandUserPath(parsed.brokerSocketPath!);
   if (process.platform === "win32") {

@@ -276,6 +276,7 @@ export class LauncherBrowserHelperClient {
             browserHostDescriptorPath: this.config.browserHostDescriptorPath!,
             browserDiagnosticsPath: this.config.browserDiagnosticsPath,
             turnTimeoutMs: this.config.turnTimeoutMs,
+            browserSendDelayMs: this.config.browserSendDelayMs,
             autoApproveToolCalls: this.config.autoApproveToolCalls,
           },
           turn: {
